@@ -1,4 +1,4 @@
-/* VdkTree v0.4.0 — authentication popup */
+/* VdkTree v0.4.2 — authentication popup */
 .vdk-auth-btn{background:#e8f4eb;color:#175c36;border:1px solid #d2e2d5;border-radius:18px;padding:7px 10px;font:600 12px system-ui;cursor:pointer;margin-left:auto;margin-right:9px;max-width:40vw;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 #vdk-auth-dialog{border:0;border-radius:16px;width:min(94vw,410px);padding:22px;box-shadow:0 14px 60px #0004;color:#244332}
 #vdk-auth-dialog::backdrop{background:#0008}
@@ -11,3 +11,14 @@
 #vdk-auth-dialog .secondary{background:#e8eee8;color:#26402f}
 #vdk-auth-dialog .error{color:#a52828;min-height:18px;font-size:12px}
 #vdk-auth-dialog .minor{font-size:12px;color:#62776a}
+
+#vdk-auth-dialog .vdk-auth-steps{margin:6px 0 14px;padding-left:23px;display:grid;gap:9px;font-size:13px;line-height:1.5}
+#vdk-auth-dialog .vdk-auth-steps li{padding-left:4px}
+#vdk-auth-dialog .vdk-auth-open-max{display:block;text-align:center;background:#18753e;color:#fff;padding:12px 14px;font-weight:700;border-radius:10px;text-decoration:none;min-height:44px}
+#vdk-auth-dialog .vdk-auth-open-max:focus-visible,#vdk-auth-dialog summary:focus-visible{outline:2px solid #18753e;outline-offset:3px}
+#vdk-auth-dialog #vdk-try-max{display:block;width:100%;margin-top:9px}
+#vdk-auth-dialog .vdk-existing-login{border-top:1px solid #d5e1d8;margin-top:18px;padding-top:15px}
+#vdk-auth-dialog .vdk-existing-login summary{font-size:13px;color:#17633d;font-weight:700;cursor:pointer;line-height:1.5}
+#vdk-auth-dialog .vdk-existing-login form{margin-top:15px}
+#vdk-auth-dialog .vdk-auth-dismiss{margin-top:4px}
+#vdk-auth-dialog .error{line-height:1.5;overflow-wrap:anywhere}
