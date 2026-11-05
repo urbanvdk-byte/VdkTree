@@ -1,4 +1,4 @@
-/* v0.4.2 — smoke tests for first-time MAX login UI, without browser packages. */
+/* v0.4.4 — smoke tests for first-time MAX login UI, without browser packages. */
 "use strict";
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
@@ -75,7 +75,8 @@ async function main() {
   const panel = web.dialog.children[0];
   assert.match(panel.innerHTML, /Логин и пароль не нужны/);
   assert.match(panel.innerHTML, /Деревья Владивостока/);
-  assert.match(panel.innerHTML, /Перейти в MAX/);
+  assert.match(panel.innerHTML, /Открыть бота в MAX/);
+  assert.match(panel.innerHTML, /href="https:\/\/max\.ru\/id2540275814_1_bot"/);
   assert.match(panel.innerHTML, /<details class="vdk-existing-login">/);
   assert.match(panel.innerHTML, /У меня уже есть логин и пароль/);
   await panel.querySelector("#vdk-try-max").onclick();
