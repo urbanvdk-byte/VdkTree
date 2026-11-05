@@ -4,6 +4,7 @@ from contextlib import contextmanager
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from auth_backend import router as auth_router, current_session
+from inventory_api import router as inventory_router, migrate_legacy
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -13,11 +14,12 @@ DATA.mkdir(parents=True, exist_ok=True)
 PHOTOS = DATA / "photos"
 PHOTOS.mkdir(exist_ok=True)
 DB = DATA / "trees.sqlite3"
-app = FastAPI(title="VdkTree", version="0.4.1")
+app = FastAPI(title="VdkTree", version="0.6.0")
 allowed_origins = ["https://urbanvdk-byte.github.io", "https://vdktree.bothost.tech"]
 allowed_origins += [o.strip() for o in os.environ.get("ALLOWED_ORIGINS", "").split(",") if o.strip()]
-app.add_middleware(CORSMiddleware, allow_origins=allowed_origins, allow_methods=["GET", "POST"], allow_headers=["Authorization", "Content-Type"])
+app.add_middleware(CORSMiddleware, allow_origins=allowed_origins, allow_methods=["GET", "POST", "PATCH"], allow_headers=["Authorization", "Content-Type"])
 app.include_router(auth_router)
+app.include_router(inventory_router)
 
 @contextmanager
 def db():
@@ -39,8 +41,12 @@ with db() as con:
     if "author_id" not in columns:
         con.execute("ALTER TABLE trees ADD COLUMN author_id TEXT")
 
+# Copy existing trees to the new, separate shared inventory without deleting old data.
+migrate_legacy(DB)
+
 app.mount("/photos", StaticFiles(directory=PHOTOS), name="photos")
 app.mount("/auth", StaticFiles(directory=BASE / "auth"), name="auth")
+app.mount("/ui", StaticFiles(directory=BASE / "ui"), name="ui")
 
 @app.get("/")
 def home():
@@ -48,7 +54,7 @@ def home():
 
 @app.get("/api/health")
 def health():
-    return {"ok": True, "version": "0.4.1"}
+    return {"ok": True, "version": "0.6.0"}
 
 @app.get("/api/trees")
 def trees(min_lat: float = 42, max_lat: float = 44, min_lon: float = 130, max_lon: float = 134):
