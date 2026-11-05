@@ -20,6 +20,7 @@ function element(tag = "div") {
     append(child) { this.children.push(child); },
     setAttribute(name, value) { this[name] = value; },
     querySelector(selector) {
+      if (this.tag === "dialog" && this.children[0]) return this.children[0].querySelector(selector);
       if (!this.cached.has(selector)) this.cached.set(selector, element(selector));
       return this.cached.get(selector);
     },
