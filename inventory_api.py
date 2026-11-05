@@ -117,7 +117,7 @@ class ObjectInput(BaseModel):
     geometry: dict | None = None
     species_common: str = Field(default="", max_length=120)
     approx_height_band: Literal["unknown", "under_2m", "2_5m", "5_10m", "over_10m"] | None = None
-    approx_diameter_cm: float | None = None
+    approx_diameter_cm: float | None = Field(default=None, gt=0, le=1000)
     visible_condition: Literal["unknown", "looks_healthy", "damaged", "dry"] = "unknown"
     visible_damage: list[Literal["broken_branches", "hollow", "cracks", "leaning", "dry_crown", "other"]] = Field(default_factory=list, max_length=6)
     observed_on: date | None = None
@@ -130,7 +130,7 @@ class ObjectPatch(BaseModel):
     lon: float | None = None
     species_common: str | None = Field(default=None, max_length=120)
     approx_height_band: Literal["unknown", "under_2m", "2_5m", "5_10m", "over_10m"] | None = None
-    approx_diameter_cm: float | None = None
+    approx_diameter_cm: float | None = Field(default=None, gt=0, le=1000)
     visible_condition: Literal["unknown", "looks_healthy", "damaged", "dry"] | None = None
     visible_damage: list[Literal["broken_branches", "hollow", "cracks", "leaning", "dry_crown", "other"]] | None = Field(default=None, max_length=6)
     observed_on: date | None = None
@@ -161,10 +161,10 @@ def _get(con, object_id):
     return dict(row)
 
 
-def _summary_rows(con, bounds):
+def _summary_rows(con, bounds, object_id=None):
     sql = """
         SELECT o.id,o.object_type,o.geometry_type,o.lat,o.lon,o.geometry_geojson,
-               o.confirmation_status,o.created_by,o.created_at,o.updated_at,
+               o.confirmation_status,o.created_by,o.created_at,o.updated_at,o.observed_on,
                o.confirmed_at,b.species_common,b.approx_height_band,
                b.approx_diameter_cm,b.visible_condition,b.visible_damage_json,b.comment,
                (SELECT COUNT(*) FROM inventory_clarifications n
@@ -175,10 +175,11 @@ def _summary_rows(con, bounds):
         LEFT JOIN inventory_basic b ON o.id=b.object_id
         WHERE (o.geometry_type='Polygon' OR
                (o.lat BETWEEN ? AND ? AND o.lon BETWEEN ? AND ?))
+          AND (? IS NULL OR o.id=?)
         ORDER BY o.created_at DESC LIMIT 5000
     """
     result = []
-    for row in con.execute(sql, bounds):
+    for row in con.execute(sql, (*bounds, object_id, object_id)):
         obj = dict(row)
         raw = obj.pop("geometry_geojson")
         obj["geometry"] = json.loads(raw) if raw else None
@@ -201,7 +202,7 @@ def list_objects(min_lat: float=42, max_lat: float=44, min_lon: float=130, max_l
 @router.get("/objects/{object_id}")
 def get_object(object_id: str):
     with connect() as con:
-        obj = next((x for x in _summary_rows(con, (42,44,130,134)) if x["id"]==object_id), None)
+        obj = next(iter(_summary_rows(con, (42,44,130,134), object_id)), None)
         if obj is None:
             raise HTTPException(404, "Объект не найден")
         obj["notes"] = [dict(r) for r in con.execute("""
@@ -227,12 +228,12 @@ def create_object(payload: ObjectInput, user=Depends(current_session)):
         con.execute("""
             INSERT INTO inventory_objects
               (id,object_type,geometry_type,lat,lon,geometry_geojson,
-               confirmation_status,created_by,created_at,updated_at,source_type)
-            VALUES(?,?,?,?,?,?,?,?,?,?,'citizen')
+               confirmation_status,created_by,created_at,updated_at,observed_on,source_type)
+            VALUES(?,?,?,?,?,?,?,?,?,?,?,'citizen')
         """, (object_id, kind, "Point" if is_point else "Polygon",
               data.get("lat"), data.get("lon"),
               None if is_point else json.dumps(data["geometry"], ensure_ascii=False),
-              "proposed" if is_point else None,user["id"],now,now))
+              "proposed" if is_point else None,user["id"],now,now,data.get("observed_on")))
         con.execute("""
             INSERT INTO inventory_basic
               (object_id,species_common,approx_height_band,approx_diameter_cm,
