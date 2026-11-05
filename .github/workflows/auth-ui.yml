@@ -1,0 +1,29 @@
+name: VdkTree MAX onboarding UI tests
+on:
+  push:
+    branches: [main]
+    paths:
+      - auth/client.js
+      - auth/auth.css
+      - index.html
+      - tests/test_auth_ui.js
+      - .github/workflows/auth-ui.yml
+  pull_request:
+    branches: [main]
+    paths:
+      - auth/client.js
+      - auth/auth.css
+      - index.html
+      - tests/test_auth_ui.js
+      - .github/workflows/auth-ui.yml
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check JavaScript syntax
+        run: node --check auth/client.js
+      - name: Check first-time MAX login user journey
+        run: node tests/test_auth_ui.js
