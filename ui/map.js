@@ -254,6 +254,7 @@
         (o.needs_clarification?'<span class="badge note-badge">🔴 Требует уточнения</span>':"")+
         label("Примерная высота",heights[o.approx_height_band])+
         label("Примерная толщина ствола",o.approx_diameter_cm?o.approx_diameter_cm+" см":"")+
+        label("Дата наблюдения",o.observed_on?new Date(o.observed_on+"T00:00:00").toLocaleDateString("ru-RU"):"")+
         label("Внешнее состояние",conditions[o.visible_condition])+
         label("Повреждения",(o.visible_damage||[]).map(x=>damage[x]||x).join(", "))+label("Комментарий",o.comment)+
         '<p class="meta">Добавлено: '+esc(date(o.created_at))+
