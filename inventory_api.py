@@ -126,6 +126,7 @@ class ObjectInput(BaseModel):
 
 class ObjectPatch(BaseModel):
     model_config = ConfigDict(extra="forbid")
+    geometry: dict | None = None
     lat: float | None = None
     lon: float | None = None
     species_common: str | None = Field(default=None, max_length=120)
@@ -255,41 +256,56 @@ def edit_object(object_id: str, payload: ObjectPatch, user=Depends(current_sessi
     if not changes:
         raise HTTPException(422, "Нет изменений")
     if any(value is None for value in changes.values()):
-        raise HTTPException(422, "Для очистки поля используйте пустую строку или «Не знаю»")
+        raise HTTPException(422, "Для очистки используйте пустую строку или «Не знаю»")
     with connect() as con:
         old = _get(con, object_id)
-        if old["object_type"] not in POINT_TYPES:
-            raise HTTPException(422, "Площадные объекты редактируются в отдельном инструменте")
         if not can_edit_object(user["role"], user["id"], old):
             raise HTTPException(403, "Редактирование недоступно")
+        is_point = old["object_type"] in POINT_TYPES
+        if is_point and "geometry" in changes:
+            raise HTTPException(422, "Точка не может иметь контур")
+        if not is_point and ("lat" in changes or "lon" in changes):
+            raise HTTPException(422, "Площадной объект изменяется через контур")
         row = con.execute("SELECT * FROM inventory_basic WHERE object_id=?", (object_id,)).fetchone()
         basic = dict(row) if row else {}
-        normalized = _validate({
+        candidate = {
             "object_type": old["object_type"],
-            "lat": changes.get("lat",old["lat"]),
-            "lon": changes.get("lon",old["lon"]),
-            "species_common": changes.get("species_common",basic.get("species_common") or ""),
-            "approx_height_band": changes.get("approx_height_band",basic.get("approx_height_band")),
-            "approx_diameter_cm": changes.get("approx_diameter_cm",basic.get("approx_diameter_cm")),
-            "visible_condition": changes.get("visible_condition",basic.get("visible_condition") or "unknown"),
-            "visible_damage": changes.get("visible_damage",json.loads(basic.get("visible_damage_json") or "[]")),
-            "comment": changes.get("comment",basic.get("comment") or ""),
-        })
+            "species_common": changes.get("species_common", basic.get("species_common") or ""),
+            "approx_height_band": changes.get("approx_height_band", basic.get("approx_height_band")),
+            "approx_diameter_cm": changes.get("approx_diameter_cm", basic.get("approx_diameter_cm")),
+            "visible_condition": changes.get("visible_condition", basic.get("visible_condition") or "unknown"),
+            "visible_damage": changes.get("visible_damage", json.loads(basic.get("visible_damage_json") or "[]")),
+            "comment": changes.get("comment", basic.get("comment") or ""),
+        }
+        if is_point:
+            candidate["lat"] = changes.get("lat", old["lat"])
+            candidate["lon"] = changes.get("lon", old["lon"])
+        else:
+            candidate["geometry"] = changes.get("geometry", json.loads(old["geometry_geojson"]))
+        normalized = _validate(candidate)
         now = int(time.time())
-        con.execute("UPDATE inventory_objects SET lat=?,lon=?,updated_at=? WHERE id=?",
-                    (normalized["lat"],normalized["lon"],now,object_id))
+        observed_on = changes.get("observed_on", old["observed_on"])
+        if is_point:
+            con.execute("""
+              UPDATE inventory_objects SET lat=?,lon=?,observed_on=?,updated_at=? WHERE id=?
+            """, (normalized["lat"], normalized["lon"], observed_on, now, object_id))
+        else:
+            con.execute("""
+              UPDATE inventory_objects SET geometry_geojson=?,observed_on=?,updated_at=? WHERE id=?
+            """, (json.dumps(normalized["geometry"],ensure_ascii=False),observed_on,now,object_id))
         con.execute("""
             UPDATE inventory_basic SET species_common=?,approx_height_band=?,
               approx_diameter_cm=?,visible_condition=?,visible_damage_json=?,comment=?
             WHERE object_id=?
-        """, (normalized.get("species_common",""), normalized.get("approx_height_band"),
+        """, (normalized.get("species_common",""),normalized.get("approx_height_band"),
               normalized.get("approx_diameter_cm"),normalized.get("visible_condition","unknown"),
-              json.dumps(normalized.get("visible_damage",[])), normalized.get("comment",""),object_id))
+              json.dumps(normalized.get("visible_damage", [])),
+              normalized.get("comment", ""),object_id))
         con.execute("""
             INSERT INTO inventory_audit(id,object_id,actor_id,action,before_json,after_json,created_at)
             VALUES(?,?,?,'edit',?,?,?)
-        """, (secrets.token_hex(16),object_id,user["id"],json.dumps(old,ensure_ascii=False),
-              json.dumps(normalized,ensure_ascii=False),now))
+        """, (secrets.token_hex(16),object_id,user["id"],
+              json.dumps(old,ensure_ascii=False),json.dumps(normalized,ensure_ascii=False),now))
     return get_object(object_id)
 
 
