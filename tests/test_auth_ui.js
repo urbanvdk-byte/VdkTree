@@ -18,6 +18,7 @@ function element(tag = "div") {
     get innerHTML() { return this._html; },
     set innerHTML(value) { this._html = value; this.children = []; this.cached = new Map(); },
     append(child) { this.children.push(child); },
+    setAttribute(name, value) { this[name] = value; },
     querySelector(selector) {
       if (!this.cached.has(selector)) this.cached.set(selector, element(selector));
       return this.cached.get(selector);
