@@ -1,0 +1,380 @@
+{
+  "version": "0.5.0",
+  "source": "Регламент инвентаризации, цифрового учета и мониторинга зеленых насаждений и природных сообществ города Владивостока, раздел 5 и Приложение №2",
+  "object_types": [
+    {
+      "id": "tree",
+      "label": "Дерево",
+      "geometry": "Point",
+      "allowed_creator_roles": [
+        "user",
+        "moderator",
+        "admin"
+      ]
+    },
+    {
+      "id": "shrub",
+      "label": "Кустарник",
+      "geometry": "Point",
+      "allowed_creator_roles": [
+        "user",
+        "moderator",
+        "admin"
+      ]
+    },
+    {
+      "id": "lawn",
+      "label": "Газон",
+      "geometry": "Polygon",
+      "allowed_creator_roles": [
+        "moderator",
+        "admin"
+      ]
+    },
+    {
+      "id": "flowerbed",
+      "label": "Цветник",
+      "geometry": "Polygon",
+      "allowed_creator_roles": [
+        "moderator",
+        "admin"
+      ]
+    },
+    {
+      "id": "natural_community",
+      "label": "Природное сообщество",
+      "geometry": "Polygon",
+      "allowed_creator_roles": [
+        "moderator",
+        "admin"
+      ]
+    }
+  ],
+  "point_confirmation": [
+    {
+      "id": "proposed",
+      "label": "Предложено",
+      "description": "Добавлено, сведения ещё не проверены"
+    },
+    {
+      "id": "confirmed",
+      "label": "Произрастает",
+      "description": "Существование и параметры подтверждены модератором или администратором"
+    }
+  ],
+  "clarification": {
+    "status": [
+      "open",
+      "closed"
+    ],
+    "badge": "#E43D36",
+    "label": "Требует уточнения",
+    "shown_when": "at least one open note; independent from confirmation"
+  },
+  "map_markers": {
+    "tree": {
+      "proposed": {
+        "fill": "#9CA3AF"
+      },
+      "confirmed": {
+        "fill": "#259D55"
+      }
+    },
+    "shrub": {
+      "proposed": {
+        "fill": "#42B8E6",
+        "stroke": "#7A8791",
+        "strokeStyle": "dashed"
+      },
+      "confirmed": {
+        "fill": "#42B8E6",
+        "stroke": "#FFFFFF",
+        "strokeStyle": "solid"
+      }
+    },
+    "notes_badge": {
+      "fill": "#E43D36",
+      "position": "top-right"
+    }
+  },
+  "basic_fields": [
+    {
+      "key": "object_type",
+      "label": "Что добавляем",
+      "required": true,
+      "applicable": [
+        "tree",
+        "shrub"
+      ],
+      "source": "Сервис"
+    },
+    {
+      "key": "position",
+      "label": "Место на карте (координаты)",
+      "required": true,
+      "applicable": [
+        "tree",
+        "shrub"
+      ],
+      "source": "Сервис"
+    },
+    {
+      "key": "photo",
+      "label": "Фотографии",
+      "required": false,
+      "applicable": [
+        "tree",
+        "shrub"
+      ],
+      "source": "Сервис"
+    },
+    {
+      "key": "species_common",
+      "label": "Название растения",
+      "required": false,
+      "placeholder": "Не знаю",
+      "source": "Ведомость 2.4, упрощено"
+    },
+    {
+      "key": "approx_height_band",
+      "label": "Примерная высота",
+      "required": false,
+      "choices": [
+        "unknown",
+        "under_2m",
+        "2_5m",
+        "5_10m",
+        "over_10m"
+      ],
+      "source": "Ведомость 2.4, упрощено"
+    },
+    {
+      "key": "approx_diameter_cm",
+      "label": "Примерная толщина ствола, см",
+      "required": false,
+      "source": "Ведомость 2.4, упрощено"
+    },
+    {
+      "key": "visible_condition",
+      "label": "Что видно снаружи",
+      "required": false,
+      "choices": [
+        "unknown",
+        "looks_healthy",
+        "damaged",
+        "dry"
+      ],
+      "source": "Сервис, не экспертная оценка"
+    },
+    {
+      "key": "visible_damage",
+      "label": "Видимые повреждения",
+      "required": false,
+      "choices": [
+        "broken_branches",
+        "hollow",
+        "cracks",
+        "leaning",
+        "dry_crown",
+        "other"
+      ],
+      "source": "Сервис"
+    },
+    {
+      "key": "observed_on",
+      "label": "Дата наблюдения",
+      "required": false,
+      "source": "Сервис"
+    },
+    {
+      "key": "comment",
+      "label": "Комментарий",
+      "required": false,
+      "source": "Сервис"
+    }
+  ],
+  "expert_fields": [
+    {
+      "key": "plot_number",
+      "label": "№ участка",
+      "source": "Ведомость 2.4"
+    },
+    {
+      "key": "biogroup_number",
+      "label": "№ биогруппы",
+      "source": "Ведомость 2.4"
+    },
+    {
+      "key": "plant_number",
+      "label": "№ растения",
+      "source": "Ведомость 2.4"
+    },
+    {
+      "key": "planting_type",
+      "label": "Тип насаждения",
+      "source": "Ведомость 2.4"
+    },
+    {
+      "key": "life_form",
+      "label": "Жизненная форма",
+      "source": "Ведомость 2.4"
+    },
+    {
+      "key": "botanical_species",
+      "label": "Ботанический вид",
+      "source": "Ведомость 2.4"
+    },
+    {
+      "key": "quantity",
+      "label": "Количество, шт.",
+      "source": "Ведомость 2.4"
+    },
+    {
+      "key": "trunk_diameter_130_cm",
+      "label": "Диаметр ствола на высоте 1,3 м, см",
+      "source": "Ведомость 2.4"
+    },
+    {
+      "key": "height_m",
+      "label": "Высота, м",
+      "source": "Ведомость 2.4"
+    },
+    {
+      "key": "approx_age_years",
+      "label": "Примерный возраст, лет",
+      "source": "Ведомость 2.4"
+    },
+    {
+      "key": "sanitary_condition_score",
+      "label": "Санитарное состояние, шкала 1–6",
+      "source": "Пункт 5.5"
+    },
+    {
+      "key": "dieback_category",
+      "label": "Категория усыхания",
+      "source": "Ведомость 2.4"
+    },
+    {
+      "key": "defects",
+      "label": "Дефекты",
+      "source": "Ведомость 2.4"
+    },
+    {
+      "key": "care_recommendations",
+      "label": "Рекомендации по уходу",
+      "source": "Ведомость 2.4"
+    },
+    {
+      "key": "slope_protection",
+      "label": "Противоэрозионная/берегозащитная функция",
+      "source": "Пункт 5.4"
+    },
+    {
+      "key": "trunk_lean_degrees",
+      "label": "Угол наклона ствола, градусы",
+      "source": "Пункт 5.4"
+    },
+    {
+      "key": "crown_asymmetry",
+      "label": "Асимметрия кроны",
+      "source": "Пункт 5.4"
+    },
+    {
+      "key": "endemic_or_relict",
+      "label": "Эндемик или реликт",
+      "source": "Пункт 5.4"
+    }
+  ],
+  "sanitary_scale": [
+    {
+      "id": 1,
+      "label": "Без признаков ослабления"
+    },
+    {
+      "id": 2,
+      "label": "Ослабленное"
+    },
+    {
+      "id": 3,
+      "label": "Сильно ослабленное"
+    },
+    {
+      "id": 4,
+      "label": "Усыхающее"
+    },
+    {
+      "id": 5,
+      "label": "Сухостой текущего года"
+    },
+    {
+      "id": 6,
+      "label": "Сухостой прошлых лет"
+    }
+  ],
+  "polygons": {
+    "lawn": {
+      "fields": [
+        "area_m2",
+        "lawn_type",
+        "area_condition"
+      ],
+      "lawn_types": [
+        "ordinary",
+        "meadow",
+        "parterre",
+        "slope",
+        "inert"
+      ],
+      "conditions": [
+        "good",
+        "satisfactory",
+        "poor"
+      ],
+      "source": "Ведомость 2.3"
+    },
+    "flowerbed": {
+      "fields": [
+        "area_m2",
+        "annual_m2",
+        "perennial_m2",
+        "bulbous_m2",
+        "roses_m2",
+        "mixed_m2"
+      ],
+      "source": "Ведомость 2.5"
+    },
+    "natural_community": {
+      "fields": [
+        "area_m2",
+        "community_type"
+      ],
+      "community_types": [
+        "forest",
+        "meadow",
+        "waterside"
+      ],
+      "source": "Пункт 3.3 и определение из пункта 2"
+    }
+  },
+  "notes": {
+    "required": [
+      "author_id",
+      "text",
+      "created_at"
+    ],
+    "readable_by": "everyone",
+    "writable_by": "authenticated users",
+    "closable_by": [
+      "moderator",
+      "admin"
+    ],
+    "does_not_change_confirmation": true
+  },
+  "account_roles": [
+    "user",
+    "moderator",
+    "admin"
+  ],
+  "author_edit_seconds": 604800,
+  "source_note": "Упрощённая видимая оценка отличается от профессиональной оценки 1–6; поля не пересчитываются автоматически."
+}
