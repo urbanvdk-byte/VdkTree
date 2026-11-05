@@ -1,0 +1,27 @@
+name: VdkTree shared map UI checks
+on:
+  push:
+    branches: [main]
+    paths:
+      - index.html
+      - ui/**
+      - .github/workflows/map-ui.yml
+      - tests/test_map_ui.js
+  pull_request:
+    branches: [main]
+    paths:
+      - index.html
+      - ui/**
+      - .github/workflows/map-ui.yml
+      - tests/test_map_ui.js
+permissions:
+  contents: read
+jobs:
+  map-ui:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify citizen map JavaScript
+        run: node --check ui/map.js
+      - name: Verify UI contract
+        run: node tests/test_map_ui.js
