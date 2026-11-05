@@ -59,6 +59,7 @@ class SharedInventoryTests(unittest.TestCase):
         public=self.client.get("/api/v2/objects/"+obj["id"])
         self.assertEqual(public.status_code,200,public.text)
         self.assertEqual(public.json()["confirmation_status"],"proposed")
+        self.assertEqual(public.json()["approx_height_band"],"5_10m")
         self.assertTrue(any(x["id"]==obj["id"] for x in self.client.get("/api/v2/objects").json()["objects"]))
 
     def test_shrub_blue_and_edit_seven_day_permissions(self):
@@ -105,7 +106,9 @@ class SharedInventoryTests(unittest.TestCase):
 
     def test_polygon_only_staff_and_photo_upload(self):
         person,_=self.login()
-        moderator,_=self.login("moderator")
+        moderator,moderator_user=self.login("moderator")
+        other_moderator,_=self.login("moderator")
+        admin,_=self.login("admin")
         polygon={"type":"Polygon","coordinates":[[
             [131.88,43.11],[131.881,43.11],[131.881,43.111],[131.88,43.11]
         ]]}
@@ -114,6 +117,16 @@ class SharedInventoryTests(unittest.TestCase):
         r=self.client.post("/api/v2/objects",headers=moderator,json=payload)
         self.assertEqual(r.status_code,201,r.text)
         self.assertEqual(r.json()["geometry"]["type"],"Polygon")
+        area_id=r.json()["id"]
+        area_url="/api/v2/objects/"+area_id
+        self.assertEqual(self.client.patch(area_url,headers=moderator,
+            json={"comment":"Уточнённая площадь"}).status_code,200)
+        self.assertEqual(self.client.patch(area_url,headers=other_moderator,
+            json={"comment":"Чужая площадь"}).status_code,403)
+        self.assertEqual(self.client.patch(area_url,headers=person,
+            json={"comment":"Чужая площадь"}).status_code,403)
+        self.assertEqual(self.client.patch(area_url,headers=admin,
+            json={"comment":"Исправлено администратором"}).status_code,200)
         self.assertEqual(self.client.post("/api/v2/objects",headers=person,json={
             "object_type":"lawn","lat":43.11,"lon":131.88}).status_code,403)
         tree=self.create_tree(person)
