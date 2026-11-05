@@ -13,7 +13,7 @@ DATA.mkdir(parents=True, exist_ok=True)
 PHOTOS = DATA / "photos"
 PHOTOS.mkdir(exist_ok=True)
 DB = DATA / "trees.sqlite3"
-app = FastAPI(title="VdkTree", version="0.4.0")
+app = FastAPI(title="VdkTree", version="0.4.1")
 allowed_origins = ["https://urbanvdk-byte.github.io", "https://vdktree.bothost.tech"]
 allowed_origins += [o.strip() for o in os.environ.get("ALLOWED_ORIGINS", "").split(",") if o.strip()]
 app.add_middleware(CORSMiddleware, allow_origins=allowed_origins, allow_methods=["GET", "POST"], allow_headers=["Authorization", "Content-Type"])
@@ -48,7 +48,7 @@ def home():
 
 @app.get("/api/health")
 def health():
-    return {"ok": True, "version": "0.4.0"}
+    return {"ok": True, "version": "0.4.1"}
 
 @app.get("/api/trees")
 def trees(min_lat: float = 42, max_lat: float = 44, min_lon: float = 130, max_lon: float = 134):
