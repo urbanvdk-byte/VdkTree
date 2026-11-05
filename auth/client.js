@@ -69,7 +69,7 @@
         <p><strong>Впервые здесь? Логин и пароль не нужны!</strong></p>
         <ol class="vdk-auth-steps">
           <li>Откройте мессенджер <strong>MAX</strong>.</li>
-          <li>Перейдите прямо в чат нашего бота по кнопке ниже.</li>
+          <li>Перейдите в чат бота «Деревья Владивостока» по кнопке ниже.</li>
           <li>Нажмите в чате кнопку <strong>«Открыть»</strong> для запуска мини-приложения.</li>
         </ol>
         <a class="vdk-auth-open-max" href="https://max.ru/id2540275814_1_bot" target="_blank" rel="noopener noreferrer">Открыть бота в MAX</a>
