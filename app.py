@@ -1,7 +1,9 @@
 import os, sqlite3, uuid, time
 from pathlib import Path
 from contextlib import contextmanager
-from fastapi import FastAPI, UploadFile, File, Form, HTTPException
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Depends
+from fastapi.middleware.cors import CORSMiddleware
+from auth_backend import router as auth_router, current_session
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -11,7 +13,11 @@ DATA.mkdir(parents=True, exist_ok=True)
 PHOTOS = DATA / "photos"
 PHOTOS.mkdir(exist_ok=True)
 DB = DATA / "trees.sqlite3"
-app = FastAPI(title="VdkTree", version="0.1.0")
+app = FastAPI(title="VdkTree", version="0.4.0")
+allowed_origins = ["https://urbanvdk-byte.github.io", "https://vdktree.bothost.tech"]
+allowed_origins += [o.strip() for o in os.environ.get("ALLOWED_ORIGINS", "").split(",") if o.strip()]
+app.add_middleware(CORSMiddleware, allow_origins=allowed_origins, allow_methods=["GET", "POST"], allow_headers=["Authorization", "Content-Type"])
+app.include_router(auth_router)
 
 @contextmanager
 def db():
@@ -29,8 +35,12 @@ with db() as con:
         species TEXT NOT NULL, condition TEXT NOT NULL,
         height REAL, diameter REAL, comment TEXT NOT NULL DEFAULT '',
         photo TEXT, created_at INTEGER NOT NULL)""")
+    columns = {row[1] for row in con.execute("PRAGMA table_info(trees)")}
+    if "author_id" not in columns:
+        con.execute("ALTER TABLE trees ADD COLUMN author_id TEXT")
 
 app.mount("/photos", StaticFiles(directory=PHOTOS), name="photos")
+app.mount("/auth", StaticFiles(directory=BASE / "auth"), name="auth")
 
 @app.get("/")
 def home():
@@ -38,7 +48,7 @@ def home():
 
 @app.get("/api/health")
 def health():
-    return {"ok": True, "version": "0.1.0"}
+    return {"ok": True, "version": "0.4.0"}
 
 @app.get("/api/trees")
 def trees(min_lat: float = 42, max_lat: float = 44, min_lon: float = 130, max_lon: float = 134):
@@ -49,7 +59,7 @@ def trees(min_lat: float = 42, max_lat: float = 44, min_lon: float = 130, max_lo
         return [dict(row) for row in rows]
 
 @app.post("/api/trees", status_code=201)
-async def add_tree(lat: float = Form(...), lon: float = Form(...), species: str = Form(...), condition: str = Form(...), height: str = Form(""), diameter: str = Form(""), comment: str = Form(""), photo: UploadFile | None = File(None)):
+async def add_tree(lat: float = Form(...), lon: float = Form(...), species: str = Form(...), condition: str = Form(...), height: str = Form(""), diameter: str = Form(""), comment: str = Form(""), photo: UploadFile | None = File(None), user=Depends(current_session)):
     if not (42 <= lat <= 44 and 130 <= lon <= 134):
         raise HTTPException(400, "Координаты за пределами региона")
     if condition not in ("healthy", "damaged", "dead") or not (1 <= len(species.strip()) <= 80) or len(comment) > 1000:
@@ -73,12 +83,17 @@ async def add_tree(lat: float = Form(...), lon: float = Form(...), species: str 
         name = uuid.uuid4().hex + ext
         (PHOTOS / name).write_bytes(blob)
         image_path = "/photos/" + name
-    record = dict(id=uuid.uuid4().hex, lat=lat, lon=lon, species=species.strip(), condition=condition, height=h, diameter=d, comment=comment.strip(), photo=image_path, created_at=int(time.time()))
+    record = dict(id=uuid.uuid4().hex, lat=lat, lon=lon, species=species.strip(), condition=condition, height=h, diameter=d, comment=comment.strip(), photo=image_path, created_at=int(time.time()), author_id=user["id"])
     try:
         with db() as con:
-            con.execute("INSERT INTO trees (id,lat,lon,species,condition,height,diameter,comment,photo,created_at) VALUES (:id,:lat,:lon,:species,:condition,:height,:diameter,:comment,:photo,:created_at)", record)
+            con.execute("INSERT INTO trees (id,lat,lon,species,condition,height,diameter,comment,photo,created_at,author_id) VALUES (:id,:lat,:lon,:species,:condition,:height,:diameter,:comment,:photo,:created_at,:author_id)", record)
     except Exception:
         if image_path:
             (PHOTOS / image_path.split("/")[-1]).unlink(missing_ok=True)
         raise
     return record
+
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=int(os.environ.get("PORT", "3000")))
