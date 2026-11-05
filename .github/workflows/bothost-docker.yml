@@ -5,6 +5,9 @@ on:
     paths:
       - Dockerfile
       - app.py
+      - inventory_api.py
+      - inventory_model.py
+      - inventory/schema_v050.sql
       - auth_backend.py
       - requirements.txt
       - .github/workflows/bothost-docker.yml
@@ -12,6 +15,9 @@ on:
     paths:
       - Dockerfile
       - app.py
+      - inventory_api.py
+      - inventory_model.py
+      - inventory/schema_v050.sql
       - auth_backend.py
       - requirements.txt
       - .github/workflows/bothost-docker.yml
@@ -31,7 +37,7 @@ jobs:
       - name: Verify health endpoint
         run: |
           for i in $(seq 1 30); do
-            if curl -fsS http://127.0.0.1:3000/api/health | python3 -c 'import json,sys; x=json.load(sys.stdin); assert x == {"ok": True, "version": "0.4.1"}'; then
+            if curl -fsS http://127.0.0.1:3000/api/health | python3 -c 'import json,sys; x=json.load(sys.stdin); assert x == {"ok": True, "version": "0.6.0"}'; then
               exit 0
             fi
             sleep 2
