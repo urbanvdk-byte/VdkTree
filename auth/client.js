@@ -1,4 +1,4 @@
-// VdkTree v0.4.0 — MAX login and optional username/password for returning users.
+// VdkTree v0.4.2 — clear MAX-first onboarding and optional password login.
 (() => {
   "use strict";
   const api = String(window.VDK_AUTH_API || "").replace(/\/$/, "");
@@ -21,7 +21,6 @@
   dialog.setAttribute("aria-label", "Вход в Деревья Владивостока");
   document.body.append(dialog);
 
-  let status = "";
   function saveSession(data) {
     token = data.token;
     user = data.user;
@@ -57,7 +56,6 @@
     return result;
   }
   function show() {
-    status = "";
     draw();
     if (!dialog.open) dialog.showModal();
   }
@@ -68,16 +66,25 @@
     if (!user) {
       panel.innerHTML = `
         <h2>Вход в VdkTree</h2>
-        <p>Первый вход — через бота MAX. После этого вы сможете создать логин и пароль для входа с сайта.</p>
-        <p class="minor">Если вы уже создавали логин и пароль, введите их ниже.</p>
-        <form id="vdk-login-form">
-          <label>Логин<input name="login" autocomplete="username" minlength="4" required></label>
-          <label>Пароль<input name="password" type="password" autocomplete="current-password" required></label>
-          <button type="submit">Войти по логину</button>
-        </form>
-        <p class="minor">Для первого входа откройте VdkTree из мини-приложения MAX.</p>
-        <button class="secondary" type="button" id="vdk-close">Закрыть</button>
-        <p role="alert" class="error" id="vdk-auth-error"></p>`;
+        <p><strong>Впервые здесь? Логин и пароль не нужны!</strong></p>
+        <ol class="vdk-auth-steps">
+          <li>Откройте мессенджер <strong>MAX</strong>.</li>
+          <li>Найдите чат с ботом «Деревья Владивостока».</li>
+          <li>Нажмите в чате кнопку <strong>«Открыть»</strong> для запуска мини-приложения.</li>
+        </ol>
+        <a class="vdk-auth-open-max" href="https://max.ru/" target="_blank" rel="noopener noreferrer">Перейти в MAX</a>
+        <p class="minor">Вход из мини-приложения MAX происходит автоматически. После него вы сможете создать логин и пароль для входа с сайта.</p>
+        <button type="button" id="vdk-try-max" class="secondary">Проверить вход через MAX</button>
+        <details class="vdk-existing-login">
+          <summary>У меня уже есть логин и пароль</summary>
+          <form id="vdk-login-form">
+            <label>Логин<input name="login" autocomplete="username" minlength="4" required></label>
+            <label>Пароль<input name="password" type="password" autocomplete="current-password" required></label>
+            <button type="submit">Войти по логину</button>
+          </form>
+        </details>
+        <p role="alert" class="error" id="vdk-auth-error"></p>
+        <button class="secondary vdk-auth-dismiss" type="button" id="vdk-close">Закрыть</button>`;
       panel.querySelector("#vdk-login-form").onsubmit = async event => {
         event.preventDefault();
         const form = event.currentTarget;
@@ -93,6 +100,11 @@
         } catch (e) { error.textContent = e.message; }
       };
       panel.querySelector("#vdk-close").onclick = () => dialog.close();
+      panel.querySelector("#vdk-try-max").onclick = async () => {
+        const error = panel.querySelector("#vdk-auth-error");
+        error.textContent = "Проверяем вход через MAX...";
+        await loginWithMAX();
+      };
     } else {
       panel.innerHTML = `
         <h2>Мой профиль</h2>
@@ -152,28 +164,50 @@
     })
   };
 
+  // Only signed launch data is sent to BotHost. Never authenticate using initDataUnsafe.
+  function signedLaunchData() {
+    const raw = window.WebApp?.initData;
+    if (typeof raw === "string" && raw.length > 0) return raw;
+    // Official MAX docs also expose the same signed WebAppData in the URL hash.
+    // Fallback helps when Bridge is unavailable or initializes later.
+    try {
+      const fragment = new URLSearchParams(window.location.hash.slice(1));
+      return fragment.get("WebAppData") || "";
+    } catch (_) { return ""; }
+  }
+
+  async function loginWithMAX() {
+    const raw = signedLaunchData();
+    if (!raw) {
+      if (!dialog.open) show();
+      const error = dialog.querySelector("#vdk-auth-error");
+      if (error) error.textContent = "Данные MAX не получены. Закройте сайт, откройте чат с ботом в MAX и нажмите «Открыть». Прямой адрес сайта не выполняет вход через MAX.";
+      return false;
+    }
+    try {
+      const result = await send("max", {init_data: raw});
+      saveSession(result);
+      if (!dialog.open && !user.has_password) show();
+      else if (dialog.open) draw();
+      return true;
+    } catch (e) {
+      console.error("MAX login failed:", e.message);
+      if (!user && !dialog.open) show();
+      const error = dialog.querySelector("#vdk-auth-error");
+      if (error) error.textContent = "Не удалось войти через MAX: " + e.message;
+      return false;
+    }
+  }
+
   async function init() {
+    try { window.WebApp?.ready?.(); } catch (_) {}
     if (token) {
       try {
         const result = await send("me", undefined, "GET");
         user = result.user; drawButton();
       } catch (_) { clearSession(); }
     }
-    const raw = window.WebApp?.initData;
-    if (typeof raw === "string" && raw.length > 0) {
-      try {
-        const result = await send("max", {init_data: raw});
-        saveSession(result);
-        if (!user.has_password) show();
-      } catch (e) {
-        console.error("MAX login failed:", e.message);
-        if (!user) {
-          show();
-          const error = dialog.querySelector("#vdk-auth-error");
-          if (error) error.textContent = "Вход через MAX: " + e.message;
-        }
-      }
-    }
+    if (signedLaunchData()) await loginWithMAX();
   }
   void init();
 })();
