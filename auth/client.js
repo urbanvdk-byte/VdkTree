@@ -1,4 +1,4 @@
-// VdkTree v0.4.2 — clear MAX-first onboarding and optional password login.
+// VdkTree v0.4.4 — clear MAX-first onboarding and optional password login.
 (() => {
   "use strict";
   const api = String(window.VDK_AUTH_API || "").replace(/\/$/, "");
@@ -69,10 +69,10 @@
         <p><strong>Впервые здесь? Логин и пароль не нужны!</strong></p>
         <ol class="vdk-auth-steps">
           <li>Откройте мессенджер <strong>MAX</strong>.</li>
-          <li>Найдите чат с ботом «Деревья Владивостока».</li>
+          <li>Перейдите прямо в чат нашего бота по кнопке ниже.</li>
           <li>Нажмите в чате кнопку <strong>«Открыть»</strong> для запуска мини-приложения.</li>
         </ol>
-        <a class="vdk-auth-open-max" href="https://max.ru/" target="_blank" rel="noopener noreferrer">Перейти в MAX</a>
+        <a class="vdk-auth-open-max" href="https://max.ru/id2540275814_1_bot" target="_blank" rel="noopener noreferrer">Открыть бота в MAX</a>
         <p class="minor">Вход из мини-приложения MAX происходит автоматически. После него вы сможете создать логин и пароль для входа с сайта.</p>
         <button type="button" id="vdk-try-max" class="secondary">Проверить вход через MAX</button>
         <details class="vdk-existing-login">
