@@ -26,6 +26,7 @@ CREATE TABLE IF NOT EXISTS inventory_objects (
     inventory_number TEXT UNIQUE,
     CHECK (
        (object_type IN ('tree','shrub') AND geometry_type='Point'
+        AND lat IS NOT NULL AND lon IS NOT NULL
         AND lat BETWEEN 42 AND 44 AND lon BETWEEN 130 AND 134
         AND geometry_geojson IS NULL AND confirmation_status IS NOT NULL)
        OR
