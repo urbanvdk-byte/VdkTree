@@ -91,7 +91,7 @@ async function main() {
   assert.match(max.apiRequests[0].url, /\/api\/auth\/max$/);
   assert.equal(JSON.parse(max.apiRequests[0].opts.body).init_data, signed);
   assert.equal(max.header.authButton.textContent, "Тест MAX");
-  assert.match(max.dialog.children[0].innerHTML, /Создайте логин и пароль/);
+  assert.match(max.dialog.children[0].querySelector("#vdk-create-credentials").innerHTML, /Создайте логин и пароль/);
 
   // Official fallback for clients that pass signed WebAppData in URL hash.
   const fromHash = await render({hash:"#WebAppData="+encodeURIComponent(signed)+"&WebAppPlatform=web"});
