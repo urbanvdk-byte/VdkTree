@@ -133,7 +133,7 @@
     clear(el("editor-status"));
     el("editor-title").textContent=editing?"Редактировать растение":"Новое растение";
     el("objectType").disabled=Boolean(editing);
-    if(selected){
+    if(selected&&!fromPlacing){
       for(const field of ["object_type","lat","lon","species_common","approx_height_band",
         "approx_diameter_cm","visible_condition","observed_on","comment"]){
         if(form.elements[field]&&selected[field]!==null&&selected[field]!==undefined)
@@ -146,7 +146,7 @@
       form.elements.object_type.value=areaGeometry?"lawn":"tree";
       form.elements.observed_on.value=new Date().toLocaleDateString("sv-SE");
     }
-    if(!selected){
+    if(!selected||fromPlacing){
       form.elements.lat.value=point.lat.toFixed(6);
       form.elements.lon.value=point.lng.toFixed(6);
     }
