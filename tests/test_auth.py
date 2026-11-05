@@ -1,0 +1,94 @@
+"""VdkTree v0.4.0: security regression tests for MAX and password login."""
+import hashlib
+import hmac
+import json
+import os
+import tempfile
+import time
+import unittest
+from urllib.parse import urlencode
+
+DATA = tempfile.TemporaryDirectory()
+os.environ["DATA_DIR"] = DATA.name
+os.environ["MAX_BOT_TOKEN"] = "test-bot-token-never-real"
+
+from fastapi.testclient import TestClient  # noqa: E402
+from app import app  # noqa: E402
+
+
+def signed_max(user_id=12345, age_seconds=0):
+    params = {
+        "auth_date": str(int(time.time()) - age_seconds),
+        "user": json.dumps({"id": user_id, "first_name": "Иван", "last_name": "Тест"},
+                           ensure_ascii=False, separators=(",", ":")),
+        "query_id": "test-query",
+    }
+    secret = hmac.new(b"WebAppData", os.environ["MAX_BOT_TOKEN"].encode(), hashlib.sha256).digest()
+    check = "\n".join(f"{key}={value}" for key, value in sorted(params.items()))
+    params["hash"] = hmac.new(secret, check.encode(), hashlib.sha256).hexdigest()
+    return urlencode(params)
+
+
+class AuthTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.client = TestClient(app)
+
+    def test_max_sign_in_create_credentials_and_password_login(self):
+        response = self.client.post("/api/auth/max", json={"init_data": signed_max(555)})
+        self.assertEqual(response.status_code, 200, response.text)
+        token = response.json()["token"]
+        self.assertEqual(response.json()["user"]["role"], "user")
+        self.assertFalse(response.json()["user"]["has_password"])
+        headers = {"Authorization": "Bearer " + token}
+        self.assertEqual(self.client.get("/api/auth/me", headers=headers).status_code, 200)
+        self.assertEqual(self.client.post("/api/auth/credentials", headers=headers,
+                         json={"login": "citizen_555", "password": "strong-password-2026"}).status_code, 200)
+        second = self.client.post("/api/auth/credentials", headers=headers,
+                       json={"login": "other_555", "password": "strong-password-2026"})
+        self.assertEqual(second.status_code, 409, second.text)
+        password_login = self.client.post("/api/auth/password",
+                             json={"login": "CITIZEN_555", "password": "strong-password-2026"})
+        self.assertEqual(password_login.status_code, 200, password_login.text)
+        user_token = password_login.json()["token"]
+        denied = self.client.post("/api/auth/credentials", headers={"Authorization": "Bearer " + user_token},
+                         json={"login": "renamed555", "password": "strong-password-2026"})
+        self.assertEqual(denied.status_code, 403)
+        self.assertEqual(self.client.post("/api/auth/logout", headers=headers).status_code, 200)
+        self.assertEqual(self.client.get("/api/auth/me", headers=headers).status_code, 401)
+
+    def test_max_rejects_tampering_and_expired_or_duplicate_data(self):
+        raw = signed_max(556)
+        self.assertEqual(self.client.post("/api/auth/max", json={"init_data":raw.replace("556","557")}).status_code, 401)
+        self.assertEqual(self.client.post("/api/auth/max", json={"init_data":signed_max(557, age_seconds=3600)}).status_code, 401)
+        self.assertEqual(self.client.post("/api/auth/max", json={"init_data":raw+"&hash=extra"}).status_code, 401)
+        self.assertEqual(self.client.post("/api/auth/max", json={"init_data":"user=fake"}).status_code, 401)
+
+    def test_no_anonymous_account_or_tree_insert(self):
+        self.assertEqual(self.client.post("/api/auth/password",
+                         json={"login":"not_registered","password":"nope"}).status_code, 401)
+        data = {"lat":"43.115", "lon":"131.885", "species":"Дуб", "condition":"healthy"}
+        self.assertEqual(self.client.post("/api/trees", data=data).status_code, 401)
+        login = self.client.post("/api/auth/max", json={"init_data":signed_max(558)})
+        token = login.json()["token"]
+        self.assertEqual(self.client.post("/api/trees", data=data,
+                         headers={"Authorization":"Bearer "+token}).status_code, 201)
+
+    def test_rate_limit_bad_password(self):
+        payload = {"login":"bruteforce_target","password":"incorrect"}
+        codes = [self.client.post("/api/auth/password", json=payload).status_code for _ in range(6)]
+        self.assertEqual(codes, [401,401,401,401,401,429])
+
+    def test_cors_allowed_origin(self):
+        response = self.client.options("/api/auth/max", headers={
+            "Origin": "https://urbanvdk-byte.github.io",
+            "Access-Control-Request-Method": "POST",
+            "Access-Control-Request-Headers": "content-type",
+        })
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.headers.get("access-control-allow-origin"),
+                         "https://urbanvdk-byte.github.io")
+
+
+if __name__ == "__main__":
+    unittest.main()
