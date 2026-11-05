@@ -8,6 +8,7 @@ import secrets
 import sqlite3
 import time
 from pathlib import Path
+from contextlib import contextmanager
 from urllib.parse import parse_qsl
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -24,11 +25,19 @@ MAX_LOGIN_MAX_AGE = 15 * 60
 LOGIN_PATTERN = re.compile(r"^[a-zA-Z0-9_-]{4,32}$")
 
 
+@contextmanager
 def connect():
     db = sqlite3.connect(AUTH_DB, timeout=15)
     db.row_factory = sqlite3.Row
     db.execute("PRAGMA foreign_keys=ON")
-    return db
+    try:
+        yield db
+        db.commit()
+    except BaseException:
+        db.rollback()
+        raise
+    finally:
+        db.close()
 
 
 def setup():
@@ -160,7 +169,7 @@ def max_login(payload: MaxLogin):
     with connect() as db:
         user = db.execute("SELECT * FROM users WHERE max_id=?", (max_user["max_id"],)).fetchone()
         if not user:
-            db.execute("INSERT INTO users(id,max_id,display_name,created_at) VALUES(?,?,?,?)",
+            db.execute("INSERT OR IGNORE INTO users(id,max_id,display_name,created_at) VALUES(?,?,?,?)",
                        (secrets.token_hex(16), max_user["max_id"], max_user["display_name"], int(time.time())))
         else:
             db.execute("UPDATE users SET display_name=? WHERE id=?",
@@ -187,6 +196,7 @@ def password_login(payload: PasswordLogin, request: Request):
             else:
                 db.execute("INSERT OR REPLACE INTO login_limits(key_hash,failures,reset_at) VALUES(?,?,?)",
                            (key, 1, now + 600))
+            db.commit()  # Persist rate limit even though the request ends with HTTP 401.
             raise HTTPException(401, "Неправильный логин или пароль")
         db.execute("DELETE FROM login_limits WHERE key_hash=?", (key,))
         session = create_session(db, user["id"], False)
