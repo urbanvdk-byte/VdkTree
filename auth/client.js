@@ -1,4 +1,4 @@
-// VdkTree v0.4.4 — clear MAX-first onboarding and optional password login.
+// VdkTree v0.6.0 — clear MAX-first onboarding and optional password login.
 (() => {
   "use strict";
   const api = String(window.VDK_AUTH_API || "").replace(/\/$/, "");
@@ -21,16 +21,22 @@
   dialog.setAttribute("aria-label", "Вход в Деревья Владивостока");
   document.body.append(dialog);
 
+  function notifyLogin() {
+    if (typeof window.dispatchEvent === "function" && typeof Event === "function")
+      window.dispatchEvent(new Event("vdktree:auth"));
+  }
   function saveSession(data) {
     token = data.token;
     user = data.user;
     try { sessionStorage.setItem(storageKey, token); } catch (_) {}
     drawButton();
+    notifyLogin();
   }
   function clearSession() {
     token = ""; user = null;
     try { sessionStorage.removeItem(storageKey); } catch (_) {}
     drawButton();
+    notifyLogin();
   }
   function drawButton() {
     button.textContent = user ? (user.display_name || user.login || "Профиль") : "Войти";
@@ -204,7 +210,7 @@
     if (token) {
       try {
         const result = await send("me", undefined, "GET");
-        user = result.user; drawButton();
+        user = result.user; drawButton(); notifyLogin();
       } catch (_) { clearSession(); }
     }
     if (signedLaunchData()) await loginWithMAX();
