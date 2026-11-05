@@ -27,7 +27,7 @@
     const name=String(p||"").split("/").pop();
     return /^[a-f0-9]{32,40}\.(jpg|png|webp)$/.test(name)?api+"/photos/"+name:null;
   };
-  let objects=[],editing=null,placing=false,drawing=false,areaVertices=[],areaGeometry=null;
+  let objects=[],editing=null,activeEditingObject=null,placing=false,drawing=false,areaVertices=[],areaGeometry=null;
 
   async function fetchJSON(path,options) {
     if(!api)throw Error("Не указан адрес BotHost");
@@ -63,6 +63,11 @@
         const c=areaColors[o.object_type]||"#64b477";
         L.geoJSON(o.geometry,{style:{color:c,fillColor:c,fillOpacity:.24,weight:3}})
           .on("click",()=>showCard(o.id)).addTo(layers);
+        if(o.needs_clarification){
+          const c=L.geoJSON(o.geometry).getBounds().getCenter();
+          L.circleMarker(c,{radius:7,color:"#fff",weight:2,fillColor:"#e43d36",fillOpacity:1})
+            .on("click",()=>showCard(o.id)).addTo(layers);
+        }
       } else if(Number.isFinite(o.lat)&&Number.isFinite(o.lon)) {
         const type=o.object_type==="shrub"?"shrub":"tree";
         const state=o.confirmation_status==="confirmed"?"confirmed":"proposed";
@@ -106,7 +111,7 @@
   window.addEventListener("vdktree:auth",()=>{roleControls();if(detail.open)detail.close();});
 
   function cancelDraw(){
-    drawing=false;placing=false;areaVertices=[];areaGeometry=null;drawingLayer.clearLayers();
+    drawing=false;placing=false;activeEditingObject=null;areaVertices=[];areaGeometry=null;drawingLayer.clearLayers();
     el("drawControls").style.display="none";
   }
   function isArea(kind){return ["lawn","flowerbed","natural_community"].includes(kind);}
@@ -119,26 +124,29 @@
   function openEditor(point,obj){
     if(!permitted())return;
     const fromPlacing=placing;
+    const selected=obj||(fromPlacing?activeEditingObject:null);
     placing=false;
-    editing=obj?.id||null;
+    editing=selected?.id||null;
+    activeEditingObject=selected;
+    if(selected?.geometry)areaGeometry=selected.geometry;
     if(!fromPlacing)form.reset();
     clear(el("editor-status"));
     el("editor-title").textContent=editing?"Редактировать растение":"Новое растение";
     el("objectType").disabled=Boolean(editing);
-    if(obj){
+    if(selected){
       for(const field of ["object_type","lat","lon","species_common","approx_height_band",
-        "approx_diameter_cm","visible_condition","comment"]){
-        if(form.elements[field]&&obj[field]!==null&&obj[field]!==undefined)
-          form.elements[field].value=obj[field];
+        "approx_diameter_cm","visible_condition","observed_on","comment"]){
+        if(form.elements[field]&&selected[field]!==null&&selected[field]!==undefined)
+          form.elements[field].value=selected[field];
       }
-      const checks=new Set(obj.visible_damage||[]);
+      const checks=new Set(selected.visible_damage||[]);
       for(const control of form.querySelectorAll('input[name="damage"]'))
         control.checked=checks.has(control.value);
     }else if(!fromPlacing) {
       form.elements.object_type.value=areaGeometry?"lawn":"tree";
       form.elements.observed_on.value=new Date().toLocaleDateString("sv-SE");
     }
-    if(!obj){
+    if(!selected){
       form.elements.lat.value=point.lat.toFixed(6);
       form.elements.lon.value=point.lng.toFixed(6);
     }
@@ -184,7 +192,8 @@
   function editable(o) {
     const u=current();if(!u)return false;
     if(u.role==="admin")return true;
-    if(isArea(o.object_type)||o.confirmation_status!=="proposed")return false;
+    if(isArea(o.object_type))return u.role==="moderator"&&o.created_by===u.id;
+    if(o.confirmation_status!=="proposed")return false;
     if(u.role==="moderator")return true;
     return u.id===o.created_by && Date.now()/1000<o.created_at+604800;
   }
@@ -215,7 +224,7 @@
       comment:f.comment.value.trim()
     };
     if(f.approx_diameter_cm.value)body.approx_diameter_cm=Number(f.approx_diameter_cm.value);
-    if(!editing&&f.observed_on.value)body.observed_on=f.observed_on.value;
+    if(f.observed_on.value)body.observed_on=f.observed_on.value;
     if(area)body.geometry=areaGeometry;
     else{body.lat=Number(f.lat.value);body.lon=Number(f.lon.value);}
     if(!editing)body.object_type=kind;
@@ -261,8 +270,9 @@
         const b=document.createElement("button");b.textContent=text;b.type="button";
         if(secondary)b.className="secondary";b.onclick=cb;actions.append(b);
       };
-      if(editable(o)&&!isPoly)btn("✏️ Редактировать",()=>{
-        detail.close();areaGeometry=null;openEditor({lat:o.lat,lng:o.lon},o);
+      if(editable(o))btn("✏️ Редактировать",()=>{
+        detail.close();areaGeometry=o.geometry||null;
+        openEditor({lat:o.lat??map.getCenter().lat,lng:o.lon??map.getCenter().lng},o);
       },true);
       if(staff()&&!isPoly&&o.confirmation_status==="proposed")
         btn("✅ Подтвердить",async()=>{
