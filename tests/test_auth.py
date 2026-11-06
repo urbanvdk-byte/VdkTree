@@ -1,15 +1,12 @@
-"""VdkTree v0.4.0: security regression tests for MAX and password login."""
+"""VdkTree v0.7.0: security regression tests for PostgreSQL MAX/password login."""
 import hashlib
 import hmac
 import json
 import os
-import tempfile
 import time
 import unittest
 from urllib.parse import urlencode
 
-DATA = tempfile.TemporaryDirectory()
-os.environ["DATA_DIR"] = DATA.name
 os.environ["MAX_BOT_TOKEN"] = "test-bot-token-never-real"
 
 from fastapi.testclient import TestClient  # noqa: E402
@@ -67,11 +64,12 @@ class AuthTests(unittest.TestCase):
     def test_no_anonymous_account_or_tree_insert(self):
         self.assertEqual(self.client.post("/api/auth/password",
                          json={"login":"not_registered","password":"nope"}).status_code, 401)
-        data = {"lat":"43.115", "lon":"131.885", "species":"Дуб", "condition":"healthy"}
-        self.assertEqual(self.client.post("/api/trees", data=data).status_code, 401)
-        login = self.client.post("/api/auth/max", json={"init_data":signed_max(558)})
+        data = {"object_type": "tree", "lat": 43.115, "lon": 131.885,
+                "species_common": "Дуб", "visible_condition": "looks_healthy"}
+        self.assertEqual(self.client.post("/api/v2/objects", json=data).status_code, 401)
+        login = self.client.post("/api/auth/max", json={"init_data": signed_max(558)})
         token = login.json()["token"]
-        self.assertEqual(self.client.post("/api/trees", data=data,
+        self.assertEqual(self.client.post("/api/v2/objects", json=data,
                          headers={"Authorization":"Bearer "+token}).status_code, 201)
 
     def test_rate_limit_bad_password(self):
