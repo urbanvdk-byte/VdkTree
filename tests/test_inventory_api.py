@@ -1,19 +1,18 @@
-"""v0.6.0 — shared inventory API permissions, notes, polygon, photo and legacy safety."""
+"""v0.7.0 — PostgreSQL API permissions, notes, polygons and persistent photos."""
 import hashlib
 import hmac
 import json
 import os
 import secrets
-import sqlite3
 import time
 import unittest
 from urllib.parse import urlencode
 
 os.environ.setdefault("MAX_BOT_TOKEN", "test-bot-token-never-real")
 from fastapi.testclient import TestClient
-from app import app, DB as LEGACY_DB
+from app import app
 from auth_backend import connect as auth_connect
-from inventory_api import connect as inventory_connect, migrate_legacy
+from inventory_api import connect as inventory_connect
 
 
 def signed_max(max_id):
@@ -150,19 +149,23 @@ class SharedInventoryTests(unittest.TestCase):
         self.assertEqual(self.client.post(url,headers=user,json={"message":"Первое замечание"}).status_code,201)
         self.assertEqual(self.client.post(url,headers=user,json={"message":"Второе замечание"}).status_code,429)
 
-    def test_legacy_rows_copied_without_deletion(self):
-        identifier="legacy-"+secrets.token_hex(8)
-        with sqlite3.connect(LEGACY_DB) as old:
-            old.execute("""
-              INSERT INTO trees(id,lat,lon,species,condition,created_at,author_id)
-              VALUES(?,43.111,131.89,'Липа','healthy',?,NULL)
-            """,(identifier,int(time.time())))
-        migrated=migrate_legacy(LEGACY_DB)
-        self.assertGreaterEqual(migrated,1)
-        self.assertEqual(migrate_legacy(LEGACY_DB),0)
-        self.assertEqual(self.client.get("/api/v2/objects/"+identifier).json()["confirmation_status"],"proposed")
-        with sqlite3.connect(LEGACY_DB) as old:
-            self.assertEqual(old.execute("SELECT COUNT(*) FROM trees WHERE id=?",(identifier,)).fetchone()[0],1)
+    def test_images_survive_as_postgresql_data(self):
+        person,_=self.login()
+        tree=self.create_tree(person)
+        blob=bytes.fromhex("89504e470d0a1a0a")+b"persisted-image-fixture"
+        sent=self.client.post("/api/v2/objects/"+tree["id"]+"/photos",headers=person,
+            files={"photo":("photo.png",blob,"image/png")})
+        self.assertEqual(sent.status_code,201,sent.text)
+        url=sent.json()["url"]
+        loaded=self.client.get(url)
+        self.assertEqual(loaded.status_code,200)
+        self.assertEqual(loaded.content,blob)
+        self.assertEqual(loaded.headers["content-type"],"image/png")
+        with inventory_connect() as db:
+            row=db.execute("SELECT content,mime_type FROM inventory_photos WHERE object_id=?",
+                           (tree["id"],)).fetchone()
+        self.assertEqual(bytes(row["content"]),blob)
+        self.assertEqual(row["mime_type"],"image/png")
 
 
 if __name__=="__main__":
