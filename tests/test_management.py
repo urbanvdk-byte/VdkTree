@@ -176,6 +176,13 @@ class ManagementTests(unittest.TestCase):
         obj=pre.json()
         self.assertEqual((obj["ready"],obj["invalid"],obj["duplicates"]),(2,1,1))
         self.assertEqual(obj["total_rows"],4)
+        report=self.client.get("/api/v2/admin/imports/"+obj["batch_id"]+"/report.csv",
+                               headers=admin)
+        self.assertEqual(report.status_code,200,report.text)
+        self.assertIn("oak-1",report.text)
+        self.assertIn("row_number,status",report.text)
+        self.assertEqual(self.client.get("/api/v2/admin/imports/"+
+            obj["batch_id"]+"/report.csv",headers=mod).status_code,403)
         batch=obj["batch_id"]
         self.assertEqual(self.client.get("/api/v2/admin/imports/"+batch,headers=admin).status_code,200)
         self.assertEqual(self.client.get("/api/v2/admin/imports/template",headers=admin).status_code,200)
@@ -203,6 +210,34 @@ class ManagementTests(unittest.TestCase):
         self.assertGreaterEqual(another.json()["duplicates"],3)
         self.assertEqual(self.client.post("/api/v2/admin/imports/"+
             another.json()["batch_id"]+"/commit",headers=admin).status_code,422)
+
+    def test_import_one_thousand_rows(self):
+        """The atomic import path accepts a practical thousand-row CSV batch."""
+        administrator,_=self.login("admin")
+        source="Thousand_"+secrets.token_hex(5)
+        lines=["object_type,latitude,longitude,species_common,external_id"]
+        for i in range(1000):
+            lines.append("tree,{:.6f},{:.6f},Ель,row-{}".format(
+                43.61+i*0.00001,132.61+i*0.00001,i))
+        csv_text="\n".join(lines).encode("utf-8")
+        prepared=self.client.post("/api/v2/admin/imports/preview",
+            headers=administrator,data={"import_source":source},
+            files={"file":("bulk.csv",csv_text,"text/csv")})
+        self.assertEqual(prepared.status_code,201,prepared.text)
+        self.assertEqual(prepared.json()["ready"],1000)
+        self.assertEqual(prepared.json()["invalid"],0)
+        batch=prepared.json()["batch_id"]
+        result=self.client.post("/api/v2/admin/imports/"+batch+"/commit",headers=administrator)
+        self.assertEqual(result.status_code,200,result.text)
+        self.assertEqual(result.json()["imported"],1000)
+        with connect() as db:
+            self.assertEqual(db.execute(
+                "SELECT COUNT(*) FROM inventory_objects WHERE import_source=?",
+                (source,)).fetchone()[0],1000)
+        csv_report=self.client.get("/api/v2/admin/imports/"+batch+"/report.csv",
+                                   headers=administrator)
+        self.assertEqual(csv_report.status_code,200)
+        self.assertIn("imported",csv_report.text)
 
     def test_import_xlsx_and_validation(self):
         admin,_=self.login("admin")
