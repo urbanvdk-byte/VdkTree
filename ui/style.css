@@ -58,3 +58,42 @@ dialog button.warning{background:#b44632}
 #drawControls button{border:0;border-radius:8px;background:#217a44;color:white;padding:10px;margin-right:6px}
 #drawControls button.secondary{background:#e6eeea;color:#214630}
 @media(max-width:500px){#legend{bottom:130px;right:9px}#toast{bottom:92px;right:10px;left:10px;max-width:none;text-align:center}#drawControls{bottom:145px}}
+
+/* v1.0.0: moderator and administrator tools; native dialog keyboard support. */
+#staffTools{position:fixed;right:12px;top:137px;z-index:960;display:flex;flex-direction:column;gap:8px;max-width:190px}
+#staffTools button{padding:10px 13px;border:1px solid #bed6c3;border-radius:11px;background:#fff;color:#194a2d;box-shadow:0 3px 15px #0002;font-weight:750;cursor:pointer;text-align:left}
+#staffTools button[hidden]{display:none}
+.management-dialog{width:min(95vw,820px);max-height:90dvh;overflow:auto}
+.management-dialog .dialog-actions{margin-top:12px}
+.management-dialog button[hidden],.management-dialog div[hidden],.management-dialog section[hidden]{display:none!important}
+.management-dialog button:disabled{opacity:.55;cursor:wait}
+.management-filters{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:14px 0}
+.management-item{padding:13px 12px;border:1px solid #d6e5dc;border-radius:12px;background:#f8fcf8;margin:10px 0}
+.management-row-title{font-weight:750;font-size:15px;overflow-wrap:anywhere}
+.management-item p.help{margin:6px 0 10px}
+.management-buttons{display:flex;flex-wrap:wrap;gap:6px}
+.management-buttons button{padding:8px 10px;font-size:12px}
+.reviewRequest{margin-top:12px;padding:10px;background:#eef4ef;border-radius:10px}
+.reviewRequest[hidden],.reviewHistory[hidden]{display:none}
+.reviewHistory{margin:12px 0 0;padding:10px;background:#fff;border:1px solid #e1eae2;border-radius:9px;max-height:270px;overflow:auto}
+.history-entry{padding:6px 0;border-bottom:1px solid #e3e9e3;font-size:12px;line-height:1.45;overflow-wrap:anywhere}
+.expert-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.expert-grid label{align-self:start}
+.expert-grid textarea{min-height:75px}
+.expert-summary{border:1px solid #dbe6dd;background:#f5faf6;border-radius:10px;padding:10px 12px;margin:12px 0}
+.expert-summary h3{margin-top:0}
+.expert-summary p{margin:5px 0;overflow-wrap:anywhere}
+.expert-summary button{margin:12px 0 3px}
+#importDialog #importForm{margin:14px 0}
+#importDialog #importMessage{font-size:13px;margin:10px 0;line-height:1.5}
+#importDialog #importSummary{font-weight:650;margin:7px 0}
+#importRows{max-height:280px;overflow:auto;border:1px solid #d6e5dc;border-radius:9px}
+.import-line{font-size:12px;padding:8px 10px;line-height:1.5;border-bottom:1px solid #e2eae4;overflow-wrap:anywhere}
+.import-line:nth-child(odd){background:#f6faf7}
+@media(max-width:580px){
+ #staffTools{top:139px;right:9px;max-width:140px}
+ #staffTools button{font-size:11px;padding:9px}
+ .management-filters,.expert-grid{grid-template-columns:1fr}
+ .management-dialog{padding:15px}
+ .management-buttons button{font-size:12px}
+}
