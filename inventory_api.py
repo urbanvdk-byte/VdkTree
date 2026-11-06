@@ -1,15 +1,14 @@
-"""VdkTree v0.6.0 — shared BotHost inventory API. Legacy SQLite preserved."""
+"""VdkTree v0.7.0 — shared PostgreSQL inventory API and persistent images."""
 import json
 import os
 import secrets
-import sqlite3
 import time
-from contextlib import contextmanager
 from datetime import date
 from pathlib import Path
 from typing import Literal
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from pgdb import connect
 from pydantic import BaseModel, ConfigDict, Field
 
 from auth_backend import current_session
@@ -19,29 +18,8 @@ from inventory_model import (
     validate_object,
 )
 
-DATA = Path(os.environ.get("DATA_DIR", str(Path(__file__).parent / "data")))
-DATA.mkdir(parents=True, exist_ok=True)
-DB = DATA / "inventory.sqlite3"
-PHOTOS = DATA / "photos"
-PHOTOS.mkdir(exist_ok=True)
-SCHEMA = Path(__file__).parent / "inventory" / "schema_v050.sql"
+SCHEMA = Path(__file__).parent / "inventory" / "schema_postgres.sql"
 router = APIRouter(prefix="/api/v2", tags=["inventory"])
-
-
-@contextmanager
-def connect():
-    connection = sqlite3.connect(DB, timeout=20)
-    connection.row_factory = sqlite3.Row
-    connection.execute("PRAGMA foreign_keys=ON")
-    connection.execute("PRAGMA busy_timeout=20000")
-    try:
-        yield connection
-        connection.commit()
-    except BaseException:
-        connection.rollback()
-        raise
-    finally:
-        connection.close()
 
 
 def initialize():
@@ -50,63 +28,6 @@ def initialize():
 
 
 initialize()
-
-
-def migrate_legacy(legacy_path: Path):
-    """Idempotently copy old records; never delete or alter the old trees database."""
-    if not legacy_path.is_file():
-        return 0
-    old = sqlite3.connect(legacy_path)
-    old.row_factory = sqlite3.Row
-    moved = 0
-    try:
-        columns = {r[1] for r in old.execute("PRAGMA table_info(trees)")}
-        if not {"id", "lat", "lon", "species", "condition", "created_at"}.issubset(columns):
-            return 0
-        rows = old.execute("SELECT * FROM trees").fetchall()
-        with connect() as con:
-            for row in rows:
-                r = dict(row)
-                try:
-                    valid = validate_object({
-                        "object_type": "tree", "lat": r["lat"], "lon": r["lon"],
-                        "species_common": (r.get("species") or "Не определено")[:120],
-                        "comment": (r.get("comment") or "")[:1000],
-                    })
-                except (InventoryValidationError, TypeError, ValueError):
-                    continue
-                owner = r.get("author_id") or "legacy"
-                object_id = r["id"]
-                insert = con.execute("""
-                  INSERT OR IGNORE INTO inventory_objects
-                    (id,object_type,geometry_type,lat,lon,confirmation_status,created_by,
-                     created_at,updated_at,source_type)
-                  VALUES(?, 'tree','Point',?,?,'proposed',?,?,?,'citizen')
-                """, (object_id, valid["lat"], valid["lon"], owner,
-                      int(r.get("created_at") or time.time()),
-                      int(r.get("created_at") or time.time())))
-                if insert.rowcount == 0:
-                    continue
-                moved += 1
-                visual = {"healthy": "looks_healthy", "damaged": "damaged", "dead": "dry"}.get(r.get("condition"), "unknown")
-                con.execute("""
-                  INSERT INTO inventory_basic(object_id,species_common,visible_condition,comment)
-                  VALUES(?,?,?,?)
-                """, (object_id, valid["species_common"], visual, valid["comment"]))
-                filename = (r.get("photo") or "").removeprefix("/photos/")
-                if filename and filename == Path(filename).name and (PHOTOS / filename).is_file():
-                    ext = Path(filename).suffix.lower()
-                    mime = {".jpg": "image/jpeg", ".png": "image/png", ".webp": "image/webp"}.get(ext)
-                    if mime:
-                        con.execute("""
-                            INSERT OR IGNORE INTO inventory_photos
-                              (id,object_id,uploaded_by,storage_key,mime_type,created_at)
-                            VALUES(?,?,?,?,?,?)
-                        """, (secrets.token_hex(16), object_id, owner, filename, mime,
-                              int(r.get("created_at") or time.time())))
-    finally:
-        old.close()
-    return moved
 
 
 class ObjectInput(BaseModel):
@@ -380,39 +301,31 @@ def close_note(object_id: str, note_id: str, payload: NoteClose, user=Depends(cu
 
 @router.post("/objects/{object_id}/photos", status_code=201)
 async def upload_photo(object_id: str, photo: UploadFile=File(...), user=Depends(current_session)):
-    with connect() as con:
-        obj = _get(con,object_id)
-        if not can_edit_object(user["role"],user["id"],obj):
-            raise HTTPException(403,"Фотографии может добавлять только автор в период редактирования или модератор")
-        count = con.execute("SELECT COUNT(*) FROM inventory_photos WHERE object_id=?",(object_id,)).fetchone()[0]
-        if count >= 8:
-            raise HTTPException(422, "К объекту можно добавить не более 8 фотографий")
     data = await photo.read(5*1024*1024+1)
-    if len(data)>5*1024*1024:
-        raise HTTPException(413,"Максимальный размер фото — 5 МБ")
+    if len(data) > 5*1024*1024:
+        raise HTTPException(413, "Максимальный размер фото — 5 МБ")
     if data.startswith(bytes.fromhex("ffd8ff")):
-        suffix,mime=".jpg","image/jpeg"
+        suffix, mime = ".jpg", "image/jpeg"
     elif data.startswith(bytes.fromhex("89504e470d0a1a0a")):
-        suffix,mime=".png","image/png"
-    elif data[:4]==b"RIFF" and data[8:12]==b"WEBP":
-        suffix,mime=".webp","image/webp"
+        suffix, mime = ".png", "image/png"
+    elif data[:4] == b"RIFF" and data[8:12] == b"WEBP":
+        suffix, mime = ".webp", "image/webp"
     else:
         raise HTTPException(422, "Допускаются только JPG, PNG или WebP")
-    name=secrets.token_hex(20)+suffix
-    filename=PHOTOS/name
-    try:
-        filename.write_bytes(data)
-        with connect() as con:
-            obj=_get(con,object_id)
-            if not can_edit_object(user["role"],user["id"],obj):
-                raise HTTPException(403,"Право изменения объекта истекло")
-            if con.execute("SELECT COUNT(*) FROM inventory_photos WHERE object_id=?", (object_id,)).fetchone()[0]>=8:
-                raise HTTPException(422,"Достигнут лимит фотографий")
-            con.execute("""
-              INSERT INTO inventory_photos(id,object_id,uploaded_by,storage_key,mime_type,created_at)
-              VALUES(?,?,?,?,?,?)
-            """,(secrets.token_hex(16),object_id,user["id"],name,mime,int(time.time())))
-    except BaseException:
-        filename.unlink(missing_ok=True)
-        raise
-    return {"url":"/photos/"+name}
+    name = secrets.token_hex(20) + suffix
+    with connect() as con:
+        # Row lock prevents simultaneous uploads from bypassing the 8-photo limit.
+        locked = con.execute("SELECT * FROM inventory_objects WHERE id=? FOR UPDATE", (object_id,)).fetchone()
+        if not locked:
+            raise HTTPException(404, "Объект не найден")
+        if not can_edit_object(user["role"], user["id"], dict(locked)):
+            raise HTTPException(403, "Недостаточно прав для загрузки фотографии")
+        count = con.execute("SELECT COUNT(*) FROM inventory_photos WHERE object_id=?", (object_id,)).fetchone()[0]
+        if count >= 8:
+            raise HTTPException(422, "К объекту можно добавить не более 8 фотографий")
+        con.execute("""
+            INSERT INTO inventory_photos
+                (id,object_id,uploaded_by,storage_key,mime_type,content,created_at)
+            VALUES(?,?,?,?,?,?,?)
+        """, (secrets.token_hex(16), object_id, user["id"], name, mime, data, int(time.time())))
+    return {"url": "/photos/" + name}
