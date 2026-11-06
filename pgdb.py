@@ -17,7 +17,7 @@ class HybridRow(dict):
 
 
 def hybrid_row(cursor):
-    columns = [column.name for column in cursor.description]
+    columns = [column.name for column in (cursor.description or ())]
     return lambda values: HybridRow(zip(columns, values))
 
 
