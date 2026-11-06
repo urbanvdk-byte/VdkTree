@@ -1,4 +1,4 @@
-/* VdkTree v0.6.0: public map, mobile forms, shared BotHost inventory and notes. */
+/* VdkTree v1.0.0: public map, mobile forms, shared BotHost inventory and notes. */
 (() => {
   "use strict";
   const api = String(window.VDK_AUTH_API || "").replace(/\/$/, "");
@@ -319,9 +319,11 @@
         };
       }else add.innerHTML='<p class="help">Войдите через MAX, чтобы оставить замечание.</p>';
       clear(el("detail-status"));if(!detail.open)detail.showModal();
+      document.dispatchEvent(new CustomEvent("vdktree:card",{detail:o}));
     }catch(e){error(el("toast"),"Ошибка карточки: "+e.message);}
   }
   el("closeDetails").onclick=()=>detail.close();
+  window.VdkMap={showCard,refresh:reload};
   roleControls();void reload();
   const timer=setInterval(()=>{if(!editor.open&&!detail.open&&!drawing)void reload();},60000);
   window.addEventListener("beforeunload",()=>clearInterval(timer));
