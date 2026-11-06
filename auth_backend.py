@@ -1,43 +1,24 @@
-"""VdkTree v0.4.0: MAX identity, optional password sign-in; no public self-registration."""
+"""VdkTree v0.7.0: PostgreSQL-backed MAX identity and password sign-in."""
 import hashlib
 import hmac
 import json
 import os
 import re
 import secrets
-import sqlite3
+import psycopg
 import time
-from pathlib import Path
-from contextlib import contextmanager
+from pgdb import connect
 from urllib.parse import parse_qsl
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, Field
 
-DATA_DIR = Path(os.environ.get("DATA_DIR", str(Path(__file__).parent / "data")))
-DATA_DIR.mkdir(parents=True, exist_ok=True)
-AUTH_DB = DATA_DIR / "auth.sqlite3"
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 bearer = HTTPBearer(auto_error=False)
 SESSION_LIFETIME = 7 * 24 * 3600
 MAX_LOGIN_MAX_AGE = 15 * 60
 LOGIN_PATTERN = re.compile(r"^[a-zA-Z0-9_-]{4,32}$")
-
-
-@contextmanager
-def connect():
-    db = sqlite3.connect(AUTH_DB, timeout=15)
-    db.row_factory = sqlite3.Row
-    db.execute("PRAGMA foreign_keys=ON")
-    try:
-        yield db
-        db.commit()
-    except BaseException:
-        db.rollback()
-        raise
-    finally:
-        db.close()
 
 
 def setup():
@@ -47,7 +28,7 @@ def setup():
             id TEXT PRIMARY KEY,
             max_id TEXT NOT NULL UNIQUE,
             display_name TEXT NOT NULL,
-            login TEXT UNIQUE COLLATE NOCASE,
+            login TEXT,
             password_hash TEXT,
             role TEXT NOT NULL DEFAULT 'user' CHECK(role IN ('user','moderator','admin')),
             created_at INTEGER NOT NULL
@@ -58,6 +39,7 @@ def setup():
             expires_at INTEGER NOT NULL,
             via_max INTEGER NOT NULL DEFAULT 0
         );
+        CREATE UNIQUE INDEX IF NOT EXISTS users_login_lower_idx ON users (lower(login));
         CREATE INDEX IF NOT EXISTS sessions_expiry_idx ON sessions(expires_at);
         CREATE TABLE IF NOT EXISTS login_limits (
             key_hash TEXT PRIMARY KEY,
@@ -169,7 +151,7 @@ def max_login(payload: MaxLogin):
     with connect() as db:
         user = db.execute("SELECT * FROM users WHERE max_id=?", (max_user["max_id"],)).fetchone()
         if not user:
-            db.execute("INSERT OR IGNORE INTO users(id,max_id,display_name,created_at) VALUES(?,?,?,?)",
+            db.execute("INSERT INTO users(id,max_id,display_name,created_at) VALUES(?,?,?,?) ON CONFLICT (max_id) DO NOTHING",
                        (secrets.token_hex(16), max_user["max_id"], max_user["display_name"], int(time.time())))
         else:
             db.execute("UPDATE users SET display_name=? WHERE id=?",
@@ -189,12 +171,12 @@ def password_login(payload: PasswordLogin, request: Request):
         limit = db.execute("SELECT failures,reset_at FROM login_limits WHERE key_hash=?", (key,)).fetchone()
         if limit and limit["reset_at"] > now and limit["failures"] >= 5:
             raise HTTPException(429, "Слишком много попыток. Попробуйте позже.")
-        user = db.execute("SELECT * FROM users WHERE login=? COLLATE NOCASE", (login,)).fetchone()
+        user = db.execute("SELECT * FROM users WHERE lower(login)=?", (login,)).fetchone()
         if not user or not user["password_hash"] or not verify_password(payload.password, user["password_hash"]):
             if limit and limit["reset_at"] > now:
                 db.execute("UPDATE login_limits SET failures=failures+1 WHERE key_hash=?", (key,))
             else:
-                db.execute("INSERT OR REPLACE INTO login_limits(key_hash,failures,reset_at) VALUES(?,?,?)",
+                db.execute("INSERT INTO login_limits(key_hash,failures,reset_at) VALUES(?,?,?) ON CONFLICT(key_hash) DO UPDATE SET failures=excluded.failures,reset_at=excluded.reset_at",
                            (key, 1, now + 600))
             db.commit()  # Persist rate limit even though the request ends with HTTP 401.
             raise HTTPException(401, "Неправильный логин или пароль")
@@ -226,7 +208,7 @@ def set_credentials(payload: NewCredentials, user=Depends(current_session)):
             if result.rowcount == 0:
                 raise HTTPException(409, "Логин и пароль уже созданы. Для изменения обратитесь к администратору.")
             row = db.execute("SELECT * FROM users WHERE id=?", (user["id"],)).fetchone()
-    except sqlite3.IntegrityError:
+    except psycopg.errors.UniqueViolation:
         raise HTTPException(409, "Этот логин занят")
     return {"user": public_user(row)}
 

@@ -1,0 +1,78 @@
+VdkTree0011 — Переход на PostgreSQL BotHost
+Дата: 07.11.2026
+Репозиторий: urbanvdk-byte/VdkTree
+Версия: v0.7.0
+Ветка разработки: feature/v070-bothost-postgres
+Pull Request: https://github.com/urbanvdk-byte/VdkTree/pull/3
+
+1. ЗАДАЧА
+Пользователь создал для VdkTree базу PostgreSQL в BotHost и добавил в переменные бота секрет DATABASE_URL. Пользователь явно подтвердил, что старые тестовые SQLite-данные переносить не нужно: реальных участников и полезных записей пока нет.
+Требовалось подключить PostgreSQL ко всей рабочей системе, а не просто добавить переменную. В прошлой версии MAX-учётные записи хранились в SQLite auth.sqlite3, растения и заметки в SQLite inventory.sqlite3, фотографии — в файловом каталоге контейнера. Так как отдельная база PostgreSQL уже предоставлена, эти механизмы должны быть заменены без смешения источников данных.
+
+2. АРХИТЕКТУРА
+- Добавлен pgdb.py. Единственный адрес подключения берётся из DATABASE_URL. Поддерживаются строки postgresql:// и postgres://; при отсутствии корректного адреса приложение явно сообщает о необходимости задать его в BotHost.
+- Для PostgreSQL использован psycopg 3 (psycopg[binary]), версия драйвера закреплена диапазоном >=3.2,<4 в requirements.txt.
+- Совместимый адаптер подключения сохраняет привычный интерфейс SQL-запросов с параметрами ? и возвращает строки, поддерживающие доступ по имени и индексу.
+- Подготовлен inventory/schema_postgres.sql с таблицами inventory_objects, inventory_basic, inventory_expert, inventory_area_details, inventory_clarifications, inventory_photos, inventory_audit, inventory_import_batches.
+- В структуру inventory_photos добавлено поле content BYTEA NOT NULL. Фотографии сохраняются непосредственно в БД и не должны исчезать при пересоздании контейнера.
+- Исторический проектный SQLite-скрипт inventory/schema_v050.sql сохранён для документации, но в работающем PostgreSQL-сервере он не исполняется.
+- SQLite-таблицы и данные не мигрируются. Старые тестовые файлы из /app/data не удалялись — просто перестали использоваться работающим кодом.
+
+3. АВТОРИЗАЦИЯ MAX И ЛОГИН/ПАРОЛЬ
+- auth_backend.py переведён с SQLite на PostgreSQL.
+- Таблицы users, sessions, login_limits создаются в PostgreSQL автоматически при старте приложения.
+- Для login сделан уникальный индекс по lower(login), сохраняющий защиту от дублирования логинов с разным регистром.
+- Проверка подписи initData MAX по HMAC-SHA256, проверка времени запуска, случайные токены сессии, SHA-256 хеш токена и scrypt для пароля сохранены.
+- Проверка частого перебора паролей и запрет самостоятельной регистрации без MAX сохраняются.
+- Обработка UPSERT/ON CONFLICT заменяет прежние SQLite INSERT OR IGNORE / INSERT OR REPLACE.
+- Реальный MAX_BOT_TOKEN остаётся только переменной окружения BotHost и никуда не копировался.
+
+4. ОБЪЕКТЫ, ЗАМЕЧАНИЯ И ФОТОГРАФИИ
+- inventory_api.py подключается к PostgreSQL и использует отдельную схему PostgreSQL.
+- Объекты карты, правила ролей, семидневное редактирование своей предложенной точки, подтверждение, замечания, аудит, площадные объекты сохраняют прежнее API /api/v2/objects.
+- Фотографии JPG/PNG/WebP до 5 МБ и до 8 на объект записываются в BYTEA, а не в /app/data/photos. Добавлена блокировка строки объекта FOR UPDATE, чтобы одновременные загрузки не обходили лимит фотографий.
+- app.py отдаёт изображения из PostgreSQL по GET /photos/{имя} с заданными MIME-типами. Файлы SVG и произвольные пути не поддерживаются. В заголовке ответа включено X-Content-Type-Options: nosniff.
+- app.py удалил старый тестовый SQLite API /api/trees. Основной публичный интерфейс и сценарии регистрации используют актуальный /api/v2/objects.
+- /api/health теперь действительно проверяет соединение с PostgreSQL. Ожидаемый результат: {"ok":true,"version":"0.7.0","database":"postgresql"}.
+- В index.html справа вверху версия обновлена до v0.7.0.
+
+5. GITHUB ACTIONS И ТЕСТЫ
+- .github/workflows/auth-tests.yml запускает PostgreSQL 16 как сервис, устанавливает зависимости и выполняет все pytest-тесты через фиктивный DATABASE_URL.
+- .github/workflows/bothost-docker.yml собирает реальный Docker-образ приложения, поднимает PostgreSQL 16, запускает контейнер с тестовой DATABASE_URL и проверяет HTTP /api/health и /api/v2/objects.
+- tests/test_auth.py переписан для PostgreSQL и новых маршрутов общего API.
+- tests/test_inventory_api.py проверяет реальное хранение PNG в PostgreSQL и её получение через HTTP после нового обращения к базе; проверяет роли и доступ.
+- tests/test_map_ui.js обновлён с версии v0.6.0 на v0.7.0.
+- На готовом кандидате: 24 pytest-теста PASSED, дополнительно 17 subtests PASSED. Проверка Docker с PostgreSQL — SUCCESS; проверки клиентского MAX и карты — SUCCESS.
+- Все тесты используют тестовые учётные данные, не настоящую базу пользователя.
+
+6. ОШИБКИ И РЕШЕНИЯ
+- При первоначальной проверке PostgreSQL возник TypeError: 'NoneType' object is not iterable в функции hybrid_row: при SQL-команде CREATE TABLE библиотека psycopg передавала cursor.description=None. Исправлено безопасной обработкой отсутствующего описания столбцов.
+- После этого при открытии карточки растения PostgreSQL сообщил IndeterminateDatatype: could not determine data type of parameter $5. В запросе к списку объектов фильтр проверял IS NULL над параметром без заданного типа. Добавлено явное приведение ?::text.
+- Статический тест интерфейса сначала ждал версию v0.6.0, хотя интерфейс уже v0.7.0. Его версия обновлена.
+- После всех исправлений полноценные PostgreSQL-тесты прошли успешно.
+- Это тестовый стенд GitHub Actions. Реальный BotHost подтвердит подключение к своей базе только после обновления приложения из основной ветки и проверки домена.
+
+7. ПРОВЕРЕННЫЕ РЕЗЕРВНЫЕ КОПИИ
+Перед заменой файлов в GitHub создана отдельная копия каждого изменённого существующего файла с исходным путём, датой, оригинальным Git blob SHA и SHA-256. Копии прочитаны и сверены с исходным содержимым:
+- auth_backend.py: backups/auth_backend.py.20261107-before-postgres-v070.bak; SHA-256 66121264235c2d34e5ba42ec0718d739ed7a3ed42479e8d4a6033db093701729
+- inventory_api.py: backups/inventory_api.py.20261107-before-postgres-v070.bak; SHA-256 c8c796cca01d871ed8f60f3a81ad3e97feb35db2c6e49e7786053094dcd52198
+- app.py: backups/app.py.20261107-before-postgres-v070.bak; SHA-256 9bad2d94ccde9a4e466a224d181eec880d6edd8334ec29ee5c9fda99d4f2502c
+- requirements.txt: backups/requirements.txt.20261107-before-postgres-v070.bak; SHA-256 15b0e20d459c75eb4f08a221022661afc38474a78a2e309e38f85cf7741244e9
+- index.html: backups/index.html.20261107-before-postgres-v070.bak; SHA-256 215ef52151e815bfdc85dff3c29212d2a1760b9374ee0949f1b1689f8bcde4be
+- tests/test_auth.py: backups/tests_test_auth.py.20261107-before-postgres-v070.bak; SHA-256 a465a62d4f93ff4590616d9c77cbe762aa5e33867ad64706d56e99881b86d2af
+- tests/test_inventory_api.py: backups/tests_test_inventory_api.py.20261107-before-postgres-v070.bak (проверена перед заменой)
+- .github/workflows/auth-tests.yml: backups/.github_workflows_auth-tests.yml.20261107-before-postgres-v070.bak; SHA-256 f9102a7fa2779c49c1874bee11b539bfce9d024a900801b7e17a70d682ad8570
+- .github/workflows/bothost-docker.yml: backups/.github_workflows_bothost-docker.yml.20261107-before-postgres-v070.bak; SHA-256 8378cc7a5c382fa3dbcd31d30e332c566f0600d2b2859d3c1b7b6ccf671a8d1f
+- BOTHOST.md: backups/BOTHOST.md.20261107-before-postgres-v070.bak; SHA-256 05df11504c46eace60fb8480d4c7393413131b73dab9137575240ec0a4dc5256
+- pgdb.py: backups/pgdb.py.20261107-before-ci-fix-v070.bak; SHA-256 5d122911ca5b5d80817c565c77b19e534f92a2d20eaa1a8fa6442e4e3a9191b2
+- tests/test_map_ui.js: backups/tests_test_map_ui.js.20261107-before-ci-fix-v070.bak; SHA-256 47408aa635bebd75a39c174a79de7feae11b91b2fbccae0efc68c7775246e045
+- inventory_api.py перед исправлением неопределённого типа: backups/inventory_api.py.20261107-before-pg-null-cast-v070.bak; SHA-256 88b0b248c9eb0c93146622f15ba90959d69ac6531c80ad30db641ad8f12f4601
+
+8. ПУБЛИКАЦИЯ И ДАЛЬНЕЙШИЕ ШАГИ
+- После успешной проверки необходимо объединить Pull Request №3 в main, не создавая отдельный checkpoint/commit/tag.
+- В BotHost DATABASE_URL уже добавлена пользователем. При установке v0.7.0 нужно оставить собственный Dockerfile и выполнить полную пересборку Git-версии main.
+- Проверить /api/health и /api/v2/objects на действующем домене vdktree.bothost.tech.
+- Проверить регистрацию реального пользователя в MAX и фотографию с другого устройства. Эти действия требуют клиентского MAX и реального BotHost, автоматическими тестами не подтверждены.
+- Когда PostgreSQL заработает, можно перейти к этапу экспертной карточки, модерации и импорта больших ведомостей.
+- Подробные инструкции по переменным бота доступны в BOTHOST.md.
+- Новых checkpoint/commit/tag отдельно не создавалось.

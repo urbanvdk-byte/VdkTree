@@ -1,0 +1,9 @@
+Original path: requirements.txt
+Date: 2026-11-07
+SHA-256 UTF-8: 15b0e20d459c75eb4f08a221022661afc38474a78a2e309e38f85cf7741244e9
+Git blob SHA: f4bedc218c7977de4ee9019ee817226e853c00ab
+
+===== ORIGINAL UTF-8 FILE =====
+fastapi>=0.115,<1
+uvicorn>=0.30,<1
+python-multipart>=0.0.9,<1

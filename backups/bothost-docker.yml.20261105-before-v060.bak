@@ -1,0 +1,52 @@
+Original path: .github/workflows/bothost-docker.yml
+SHA-256: 8e7c9381c6c381915c0e7f2378f823bfecb84ba19a015945196063c83b0630fe
+Date: 2026-11-05
+Original blob: a8e893c51ec4889aa59ab21b8894c8af6bbd8c4e
+
+===== ORIGINAL FILE =====
+name: VdkTree BotHost Docker smoke test
+on:
+  push:
+    branches: [main]
+    paths:
+      - Dockerfile
+      - app.py
+      - auth_backend.py
+      - requirements.txt
+      - .github/workflows/bothost-docker.yml
+  pull_request:
+    paths:
+      - Dockerfile
+      - app.py
+      - auth_backend.py
+      - requirements.txt
+      - .github/workflows/bothost-docker.yml
+
+permissions:
+  contents: read
+
+jobs:
+  docker-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build Python image
+        run: docker build --pull -t vdktree-bothost:test .
+      - name: Start container
+        run: docker run --rm -d --name vdktree-test -p 3000:3000 -e PORT=3000 -e DATA_DIR=/app/data vdktree-bothost:test
+      - name: Verify health endpoint
+        run: |
+          for i in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:3000/api/health | python3 -c 'import json,sys; x=json.load(sys.stdin); assert x == {"ok": True, "version": "0.4.1"}'; then
+              exit 0
+            fi
+            sleep 2
+          done
+          docker logs vdktree-test
+          exit 1
+      - name: Show logs on failure
+        if: failure()
+        run: docker logs vdktree-test || true
+      - name: Stop container
+        if: always()
+        run: docker stop vdktree-test || true
