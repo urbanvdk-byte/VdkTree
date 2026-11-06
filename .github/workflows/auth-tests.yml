@@ -34,8 +34,8 @@ jobs:
       - name: Install dependencies
         run: python -m pip install -r requirements.txt pytest httpx
       - name: Compile Python
-        run: python -m compileall -q app.py auth_backend.py inventory_api.py pgdb.py tests
+        run: python -m compileall -q app.py auth_backend.py inventory_api.py moderation_api.py expert_api.py import_api.py pgdb.py tests
       - name: Check JavaScript syntax
-        run: node --check auth/client.js && node --check ui/map.js
+        run: node --check auth/client.js && node --check ui/map.js && node --check ui/management.js
       - name: Test PostgreSQL MAX and inventory
         run: python -m pytest -q
