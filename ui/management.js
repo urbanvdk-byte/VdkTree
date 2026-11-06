@@ -78,7 +78,7 @@
     '<div id="importMessage" role="status"></div>'+
     '<div id="importSummary"></div>'+
     '<div id="importRows"></div>'+
-    '<div class="dialog-actions"><button type="button" id="importMore" class="secondary" hidden>Ещё строки</button>'+
+    '<div class="dialog-actions"><button type="button" id="downloadReport" class="secondary" hidden>Скачать отчёт CSV</button><button type="button" id="importMore" class="secondary" hidden>Ещё строки</button>'+
     '<button type="button" id="commitImport" hidden>Подтвердить импорт</button>'+
     '<button type="button" id="closeImport" class="secondary">Закрыть</button></div>';
   document.body.append(importer);
@@ -358,6 +358,7 @@
     importOffset=data.offset+data.rows.length;
     $("importMore").hidden=importOffset>=data.total_rows;
     $("commitImport").hidden=data.state!=="validated"||data.ready<1;
+    $("downloadReport").hidden=!activeBatch;
   }
   $("openImport").onclick=()=>{
     if(!isAdmin())return;
@@ -386,6 +387,20 @@
       paintBatch(result);msg("Файл проверен. Проверьте отчёт и подтвердите импорт.");
     }catch(e){msg("Ошибка проверки: "+e.message);}
     finally{$("previewFile").disabled=false;}
+  };
+  $("downloadReport").onclick=async()=>{
+    if(!activeBatch||!isAdmin())return;
+    try{
+      const response=await window.VdkAuth.authorizedFetch(
+        "/api/v2/admin/imports/"+encodeURIComponent(activeBatch)+"/report.csv");
+      if(!response.ok)throw Error("Отчёт недоступен");
+      const blob=await response.blob();
+      const url=URL.createObjectURL(blob);
+      const anchor=document.createElement("a");
+      anchor.href=url;anchor.download="VdkTree-отчёт-"+activeBatch+".csv";
+      document.body.append(anchor);anchor.click();anchor.remove();
+      setTimeout(()=>URL.revokeObjectURL(url),1000);
+    }catch(e){msg(e.message);}
   };
   $("importMore").onclick=async()=>{
     if(!activeBatch||!isAdmin())return;
