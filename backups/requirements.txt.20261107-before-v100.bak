@@ -1,0 +1,10 @@
+Original path: requirements.txt
+Date: 2026-11-07
+SHA-256 UTF-8: 9475ad3112c7e845cba6c1ef8f97bebf58de52de7c6f8b22ba8d2e4245bd6282
+Git blob: 596ec29ac0102417d26c89d0e0101831ddecb66b
+
+===== ORIGINAL FILE =====
+fastapi>=0.115,<1
+uvicorn>=0.30,<1
+python-multipart>=0.0.9,<1
+psycopg[binary]>=3.2,<4

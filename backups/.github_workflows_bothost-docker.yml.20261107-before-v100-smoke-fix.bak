@@ -1,0 +1,78 @@
+Original path: .github/workflows/bothost-docker.yml
+Date: 2026-11-07
+SHA-256 UTF-8: 04428986f59dd82ebdee73232895dcce01e5e57379d8d997ea527be8bf90793e
+Git blob: 6492bea0c8c150e5b90b21284f0b17c282e8b903
+
+===== ORIGINAL FILE =====
+name: VdkTree BotHost Docker smoke test
+on:
+  push:
+    branches: [main]
+    paths:
+      - Dockerfile
+      - app.py
+      - auth_backend.py
+      - inventory_api.py
+      - pgdb.py
+      - inventory/schema_postgres.sql
+      - requirements.txt
+      - .github/workflows/bothost-docker.yml
+  pull_request:
+    paths:
+      - Dockerfile
+      - app.py
+      - auth_backend.py
+      - inventory_api.py
+      - pgdb.py
+      - inventory/schema_postgres.sql
+      - requirements.txt
+      - .github/workflows/bothost-docker.yml
+
+permissions:
+  contents: read
+
+jobs:
+  docker-smoke:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: vdktree_ci
+          POSTGRES_PASSWORD: ci_only_password
+          POSTGRES_DB: vdktree_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U vdktree_ci -d vdktree_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build Python image
+        run: docker build --pull -t vdktree-bothost:test .
+      - name: Start container using PostgreSQL
+        run: >
+          docker run --rm -d --name vdktree-test --network host
+          -e PORT=3000
+          -e DATABASE_URL=postgresql://vdktree_ci:ci_only_password@127.0.0.1:5432/vdktree_ci
+          -e MAX_BOT_TOKEN=test-bot-token-never-real
+          vdktree-bothost:test
+      - name: Verify health and public map API
+        run: |
+          for i in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:3000/api/health | python3 -c 'import json,sys; x=json.load(sys.stdin); assert x["ok"] and x["database"] == "postgresql" and x["version"] == "0.7.0"'; then
+              curl -fsS http://127.0.0.1:3000/api/v2/objects | python3 -c 'import json,sys; assert isinstance(json.load(sys.stdin)["objects"], list)'
+              exit 0
+            fi
+            sleep 2
+          done
+          docker logs vdktree-test
+          exit 1
+      - name: Show logs on failure
+        if: failure()
+        run: docker logs vdktree-test || true
+      - name: Stop container
+        if: always()
+        run: docker stop vdktree-test || true
