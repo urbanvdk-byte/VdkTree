@@ -97,7 +97,7 @@ def _summary_rows(con, bounds, object_id=None):
         LEFT JOIN inventory_basic b ON o.id=b.object_id
         WHERE (o.geometry_type='Polygon' OR
                (o.lat BETWEEN ? AND ? AND o.lon BETWEEN ? AND ?))
-          AND (? IS NULL OR o.id=?)
+          AND (?::text IS NULL OR o.id=?)
         ORDER BY o.created_at DESC LIMIT 5000
     """
     result = []
