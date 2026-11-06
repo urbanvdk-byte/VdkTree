@@ -70,7 +70,10 @@ def _store(con, table, columns, object_id, data):
     update = ", ".join(name + "=EXCLUDED." + name for name in columns)
     query = ("INSERT INTO " + table + " (" + ",".join(names) + ") VALUES (" +
              ",".join("?" for _ in names) + ") ON CONFLICT(object_id) DO UPDATE SET " + update)
-    con.execute(query, (object_id, *(data.get(name) for name in columns)))
+    values = tuple(int(data[name]) if name in ("slope_protection", "endemic_or_relict")
+                   and data.get(name) is not None else data.get(name)
+                   for name in columns)
+    con.execute(query, (object_id, *values))
 
 
 def _update(object_id, body, fields, table, allowed_types, action, user):
