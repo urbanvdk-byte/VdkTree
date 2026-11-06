@@ -1,0 +1,30 @@
+Original path: .github/workflows/auth-tests.yml
+Date: 2026-11-07
+SHA-256 UTF-8: f9102a7fa2779c49c1874bee11b539bfce9d024a900801b7e17a70d682ad8570
+Git blob SHA: f93aede10d7bddfcc1a6fb1d72c4614e757786f5
+
+===== ORIGINAL UTF-8 FILE =====
+name: VdkTree authentication checks
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install dependencies
+        run: python -m pip install -r requirements.txt pytest httpx
+      - name: Compile Python
+        run: python -m compileall -q app.py auth_backend.py tests
+      - name: Check JavaScript syntax
+        run: node --check auth/client.js
+      - name: Test MAX and credential authentication
+        run: python -m pytest -q
