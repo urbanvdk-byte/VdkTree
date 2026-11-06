@@ -319,6 +319,38 @@ async def preview(
             book.close()
 
 
+@router.get("/{batch_id}/report.csv")
+def download_report(batch_id: str, user=Depends(admin)):
+    """All preview/import results as Excel-friendly CSV with formula injection protection."""
+    with connect() as con:
+        batch=_batch(con,batch_id)
+        rows=con.execute("""
+            SELECT row_number,row_state,external_id,errors_json,payload_json,created_object_id
+            FROM inventory_import_rows WHERE batch_id=?
+            ORDER BY row_number
+        """,(batch_id,)).fetchall()
+    buffer=io.StringIO()
+    writer=csv.writer(buffer)
+    writer.writerow(["row_number","status","external_id","species_common",
+                     "latitude","longitude","errors","object_id"])
+    def safe(value):
+        text=str(value if value is not None else "")
+        return "'"+text if text.startswith(("=","+","-","@","\t","\r")) else text
+    for row in rows:
+        payload=json.loads(row["payload_json"] or "{}")
+        basic=payload.get("basic",{})
+        errors="; ".join(json.loads(row["errors_json"] or "[]"))
+        writer.writerow([row["row_number"],row["row_state"],safe(row["external_id"]),
+                         safe(basic.get("species_common")),basic.get("lat",""),
+                         basic.get("lon",""),safe(errors),row["created_object_id"] or ""])
+    return Response(
+        content="\ufeff"+buffer.getvalue(),
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition":
+                 'attachment; filename="VdkTree-import-report-'+batch_id+'.csv"'}
+    )
+
+
 @router.get("/{batch_id}")
 def get_batch(batch_id: str, offset: int=0, user=Depends(admin)):
     if offset<0 or offset>MAX_ROWS:
