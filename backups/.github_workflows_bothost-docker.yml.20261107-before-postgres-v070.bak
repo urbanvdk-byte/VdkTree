@@ -1,0 +1,58 @@
+Original path: .github/workflows/bothost-docker.yml
+Date: 2026-11-07
+SHA-256 UTF-8: 8378cc7a5c382fa3dbcd31d30e332c566f0600d2b2859d3c1b7b6ccf671a8d1f
+Git blob SHA: b3644533593d90c9be3b6d478c08b5698ab558d5
+
+===== ORIGINAL UTF-8 FILE =====
+name: VdkTree BotHost Docker smoke test
+on:
+  push:
+    branches: [main]
+    paths:
+      - Dockerfile
+      - app.py
+      - inventory_api.py
+      - inventory_model.py
+      - inventory/schema_v050.sql
+      - auth_backend.py
+      - requirements.txt
+      - .github/workflows/bothost-docker.yml
+  pull_request:
+    paths:
+      - Dockerfile
+      - app.py
+      - inventory_api.py
+      - inventory_model.py
+      - inventory/schema_v050.sql
+      - auth_backend.py
+      - requirements.txt
+      - .github/workflows/bothost-docker.yml
+
+permissions:
+  contents: read
+
+jobs:
+  docker-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build Python image
+        run: docker build --pull -t vdktree-bothost:test .
+      - name: Start container
+        run: docker run --rm -d --name vdktree-test -p 3000:3000 -e PORT=3000 -e DATA_DIR=/app/data vdktree-bothost:test
+      - name: Verify health endpoint
+        run: |
+          for i in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:3000/api/health | python3 -c 'import json,sys; x=json.load(sys.stdin); assert x == {"ok": True, "version": "0.6.0"}'; then
+              exit 0
+            fi
+            sleep 2
+          done
+          docker logs vdktree-test
+          exit 1
+      - name: Show logs on failure
+        if: failure()
+        run: docker logs vdktree-test || true
+      - name: Stop container
+        if: always()
+        run: docker stop vdktree-test || true
