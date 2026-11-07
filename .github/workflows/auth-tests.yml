@@ -33,6 +33,15 @@ jobs:
           python-version: '3.11'
       - name: Install dependencies
         run: python -m pip install -r requirements.txt pytest httpx
+      - name: Reproduce pre-existing public.users with INTEGER id
+        run: |
+          python - <<'PY'
+          import os
+          import psycopg
+          with psycopg.connect(os.environ["DATABASE_URL"]) as db:
+              db.execute("CREATE TABLE public.users (id INTEGER PRIMARY KEY)")
+              db.execute("INSERT INTO public.users(id) VALUES (1234)")
+          PY
       - name: Compile Python
         run: python -m compileall -q app.py auth_backend.py inventory_api.py moderation_api.py expert_api.py import_api.py pgdb.py tests
       - name: Check JavaScript syntax
