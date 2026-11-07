@@ -54,6 +54,12 @@ jobs:
       - uses: actions/checkout@v4
       - name: Build Python image
         run: docker build --pull -t vdktree-bothost:test .
+      - name: Seed incompatible public.users for Docker startup regression
+        run: |
+          docker run --rm --network host \
+            -e DATABASE_URL=postgresql://vdktree_ci:ci_only_password@127.0.0.1:5432/vdktree_ci \
+            --entrypoint python vdktree-bothost:test \
+            -c "import os,psycopg; db=psycopg.connect(os.environ['DATABASE_URL']); db.execute('CREATE TABLE public.users (id INTEGER PRIMARY KEY)'); db.execute('INSERT INTO public.users(id) VALUES (1234)'); db.commit(); db.close()"
       - name: Start container using PostgreSQL
         run: >
           docker run --rm -d --name vdktree-test --network host
@@ -64,7 +70,7 @@ jobs:
       - name: Verify health and public map API
         run: |
           for i in $(seq 1 30); do
-            if curl -fsS http://127.0.0.1:3000/api/health | python3 -c 'import json,sys; x=json.load(sys.stdin); assert x["ok"] and x["database"] == "postgresql" and x["version"] == "1.0.0"'; then
+            if curl -fsS http://127.0.0.1:3000/api/health | python3 -c 'import json,sys; x=json.load(sys.stdin); assert x["ok"] and x["database"] == "postgresql" and x["version"] == "1.0.1"'; then
               curl -fsS http://127.0.0.1:3000/api/v2/objects | python3 -c 'import json,sys; assert isinstance(json.load(sys.stdin)["objects"], list)'
               exit 0
             fi
