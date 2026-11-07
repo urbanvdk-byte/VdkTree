@@ -1,4 +1,4 @@
-/* VdkTree v1.0.0 — moderator queue, expert forms and administrator CSV/XLSX import. */
+/* VdkTree v1.0.3 — moderator queue, expert forms and administrator CSV/XLSX import. */
 (() => {
   "use strict";
   const $ = id => document.getElementById(id);
@@ -28,8 +28,29 @@
   tools.id="staffTools";
   tools.innerHTML=
     '<button type="button" id="openModeration" hidden>🛡️ Модерация</button>'+
-    '<button type="button" id="openImport" hidden>📥 Импорт Excel/CSV</button>';
+    '<button type="button" id="openImport" hidden>📥 Импорт Excel/CSV</button>'+ '<button type="button" id="openUsers" hidden>👥 Пользователи</button>';
   document.body.append(tools);
+
+  const usersDialog=document.createElement("dialog");
+  usersDialog.id="usersDialog";
+  usersDialog.className="management-dialog";
+  usersDialog.innerHTML=
+    '<h2>👥 Пользователи</h2>'+
+    '<p class="help">Только администраторы могут просматривать участников, менять роли, блокировать учётные записи, завершать сеансы и сбрасывать логин/пароль. Изменения записываются в историю.</p>'+
+    '<form id="usersFilters" class="users-filters">'+
+      '<label>Найти участника<input name="q" maxlength="100" placeholder="Логин, имя или MAX ID"></label>'+
+      '<label>Роль<select name="role"><option value="all">Любая</option>'+
+        '<option value="user">Пользователь</option><option value="moderator">Модератор</option>'+
+        '<option value="admin">Администратор</option></select></label>'+
+      '<label>Доступ<select name="status"><option value="all">Любой</option>'+
+        '<option value="active">Активные</option><option value="blocked">Заблокированные</option>'+
+      '</select></label><button type="submit">Найти</button>'+
+    '</form>'+
+    '<p id="usersSummary" role="status" class="help"></p>'+
+    '<div id="usersRows" aria-live="polite"></div>'+
+    '<div class="dialog-actions"><button type="button" id="usersMore" class="secondary">Ещё 30</button>'+
+      '<button type="button" id="usersClose" class="secondary">Закрыть</button></div>';
+  document.body.append(usersDialog);
 
   const moderator=document.createElement("dialog");
   moderator.id="moderationDialog";
@@ -86,8 +107,10 @@
   function roles() {
     $("openModeration").hidden=!isStaff();
     $("openImport").hidden=!isAdmin();
+    $("openUsers").hidden=!isAdmin();
     if(!isStaff() && moderator.open)moderator.close();
     if(!isAdmin() && importer.open)importer.close();
+    if(!isAdmin() && usersDialog.open)usersDialog.close();
     if(!isStaff() && expert.open)expert.close();
   }
   window.addEventListener("vdktree:auth",roles);
@@ -423,4 +446,160 @@
     }catch(e){msg("Импорт не завершён: "+e.message);}
     finally{$("commitImport").disabled=false;}
   };
+}
+  // User account administration is entirely server-authorized. These controls
+  // are only presentation: role checks, audit and last-admin safety live in Python.
+  const roleText = {user:"Пользователь",moderator:"Модератор",admin:"Администратор"};
+  let usersOffset=0;
+  async function loadUsers(reset=true) {
+    if (!isAdmin()) return;
+    if (reset) {usersOffset=0;$("usersRows").replaceChildren();}
+    const fields=$("usersFilters").elements;
+    const params=new URLSearchParams({
+      q:fields.q.value.trim(),role:fields.role.value,status:fields.status.value,
+      limit:"30",offset:String(usersOffset)
+    });
+    $("usersSummary").textContent="Загружаем участников…";
+    try {
+      const result=await api("/api/v2/admin/users?"+params.toString());
+      $("usersSummary").textContent="Всего зарегистрировано: "+result.counts.total+
+        " · Администраторов: "+result.counts.admins+
+        " · Модераторов: "+result.counts.moderators+
+        " · Заблокированных: "+result.counts.blocked+
+        " · По фильтру: "+result.total;
+      for(const item of result.users) usersRow(item);
+      usersOffset+=result.users.length;
+      $("usersMore").hidden=usersOffset>=result.total;
+      if(result.total===0)$("usersRows").textContent="Пользователей по фильтру не найдено.";
+    }catch(e){$("usersSummary").textContent="Ошибка загрузки: "+e.message;}
+  }
+  function managementButton(text,fn,neutral=false) {
+    const b=document.createElement("button");
+    b.type="button";b.textContent=text;b.onclick=fn;
+    if(neutral)b.className="secondary";
+    return b;
+  }
+  function usersRow(u) {
+    const item=document.createElement("section");
+    item.className="management-item user-admin-item";
+    const title=document.createElement("div");
+    title.className="management-row-title";
+    title.textContent=(u.display_name||"Без имени")+" — "+(u.login||"логин не установлен");
+    const meta=document.createElement("p");
+    meta.className="help";
+    meta.textContent="MAX ID: "+u.max_id+" · "+roleText[u.role]+
+      (u.is_blocked?" · ⛔ Заблокирован":" · Активен")+
+      " · Регистрация: "+dt(u.created_at)+
+      " · Последний вход: "+dt(u.last_login_at);
+    const stats=document.createElement("p");
+    stats.className="help";
+    stats.textContent="Растений/объектов: "+u.plants_count+
+      " · Замечаний: "+u.notes_count;
+    item.append(title,meta,stats);
+    const isOwn=u.id===user()?.id;
+    const controls=document.createElement("div");
+    controls.className="management-buttons";
+    controls.append(managementButton("История изменений",async()=>{
+      const view=item.querySelector(".user-history");
+      if(!view.hidden){view.hidden=true;return;}
+      view.hidden=false;view.textContent="Загружаем…";
+      try{
+        const data=await api("/api/v2/admin/users/"+encodeURIComponent(u.id)+"/history");
+        view.replaceChildren();
+        if(!data.events.length)view.textContent="Изменений пока нет.";
+        for(const ev of data.events){
+          const line=document.createElement("p");line.className="history-entry";
+          const from=ev.before?.role||"",to=ev.after?.role||"";
+          const effect=from&&to?" ["+from+" → "+to+"]":"";
+          line.textContent=dt(ev.created_at)+" · "+ev.action+effect+
+            " · "+(ev.actor_login||ev.actor_name||"Система")+
+            " · "+ev.reason;
+          view.append(line);
+        }
+      }catch(e){view.textContent="Ошибка: "+e.message;}
+    },true));
+    if(!isOwn) {
+      controls.append(managementButton(u.is_blocked?"Разблокировать":"Заблокировать",
+        async()=>{
+          const verb=u.is_blocked?"разблокировать":"заблокировать";
+          if(!confirm("Точно "+verb+" пользователя "+(u.login||u.display_name)+"?"))return;
+          const reason=prompt("Причина изменения доступа (не менее 3 символов):");
+          if(!reason||reason.trim().length<3)return;
+          try{
+            await api("/api/v2/admin/users/"+encodeURIComponent(u.id),{
+              method:"PATCH",headers:{"Content-Type":"application/json"},
+              body:JSON.stringify({is_blocked:!u.is_blocked,reason:reason.trim()})
+            });
+            await loadUsers();
+          }catch(e){alert(e.message);}
+        },true));
+      controls.append(managementButton("Завершить все сеансы",async()=>{
+        if(!confirm("Завершить все активные входы этого пользователя?"))return;
+        const reason=prompt("Укажите причину:");
+        if(!reason||reason.trim().length<3)return;
+        try{
+          const result=await api("/api/v2/admin/users/"+encodeURIComponent(u.id)+"/revoke-sessions",
+            json({reason:reason.trim()}));
+          alert("Завершено сеансов: "+result.revoked);
+          await loadUsers();
+        }catch(e){alert(e.message);}
+      },true));
+      controls.append(managementButton("Сбросить логин/пароль",async()=>{
+        if(!confirm("Сбросить логин и пароль "+(u.login||u.display_name)+
+          "? Следующий вход возможен только через MAX, все сеансы завершатся."))return;
+        const reason=prompt("Причина сброса:");
+        if(!reason||reason.trim().length<3)return;
+        try{
+          await api("/api/v2/admin/users/"+encodeURIComponent(u.id)+"/reset-credentials",
+            json({reason:reason.trim()}));
+          await loadUsers();
+        }catch(e){alert(e.message);}
+      },true));
+    }
+    item.append(controls);
+    if(!isOwn){
+      const roleForm=document.createElement("form");
+      roleForm.className="user-role-form";
+      roleForm.innerHTML='<label>Назначить роль<select name="role" required>'+
+        '<option value="user">Пользователь</option>'+
+        '<option value="moderator">Модератор</option>'+
+        '<option value="admin">Администратор</option></select></label>'+
+        '<label>Причина<input name="reason" maxlength="500" minlength="3" '+
+        'placeholder="Например, назначен модератором" required></label>'+
+        '<button type="submit">Сохранить роль</button>';
+      roleForm.elements.role.value=u.role;
+      roleForm.onsubmit=async event=>{
+        event.preventDefault();
+        const role=roleForm.elements.role.value;
+        const reason=roleForm.elements.reason.value.trim();
+        if(role===u.role){alert("Выберите другую роль.");return;}
+        if(reason.length<3){alert("Укажите причину.");return;}
+        if(!confirm("Изменить роль "+(u.login||u.display_name)+" на "+
+          roleText[role]+"?"))return;
+        const save=roleForm.querySelector('button[type="submit"]');
+        save.disabled=true;
+        try{
+          await api("/api/v2/admin/users/"+encodeURIComponent(u.id),{
+            method:"PATCH",headers:{"Content-Type":"application/json"},
+            body:JSON.stringify({role,reason})
+          });
+          await loadUsers();
+        }catch(e){alert(e.message);}
+        finally{save.disabled=false;}
+      };
+      item.append(roleForm);
+    }else{
+      const note=document.createElement("p");
+      note.className="help";note.textContent="Это ваша учётная запись. Самостоятельно изменять её роль или блокировать её нельзя.";
+      item.append(note);
+    }
+    const history=document.createElement("div");
+    history.className="reviewHistory user-history";history.hidden=true;
+    item.append(history);
+    $("usersRows").append(item);
+  }
+  $("openUsers").onclick=()=>{if(!isAdmin())return;usersDialog.showModal();void loadUsers();};
+  $("usersClose").onclick=()=>usersDialog.close();
+  $("usersFilters").onsubmit=e=>{e.preventDefault();void loadUsers();};
+  $("usersMore").onclick=()=>loadUsers(false);
 })();
