@@ -9,6 +9,7 @@ from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 from auth_backend import router as auth_router
+from device_auth import router as device_auth_router
 from inventory_api import router as inventory_router
 from moderation_api import router as moderation_router
 from expert_api import router as expert_router
@@ -16,7 +17,7 @@ from import_api import router as import_router
 from pgdb import connect
 
 BASE = Path(__file__).resolve().parent
-app = FastAPI(title="VdkTree", version="1.0.1")
+app = FastAPI(title="VdkTree", version="1.0.2")
 allowed_origins = [
     "https://urbanvdk-byte.github.io",
     "https://vdktree.bothost.tech",
@@ -32,6 +33,7 @@ app.add_middleware(
     allow_headers=["Authorization", "Content-Type"]
 )
 app.include_router(auth_router)
+app.include_router(device_auth_router)
 app.include_router(inventory_router)
 app.include_router(moderation_router)
 app.include_router(expert_router)
@@ -51,7 +53,7 @@ def health():
     # A healthy HTTP process is not enough: verify PostgreSQL connectivity too.
     with connect() as con:
         con.execute("SELECT 1")
-    return {"ok": True, "version": "1.0.1", "database": "postgresql"}
+    return {"ok": True, "version": "1.0.2", "database": "postgresql"}
 
 
 @app.get("/photos/{filename}")
