@@ -446,7 +446,6 @@
     }catch(e){msg("Импорт не завершён: "+e.message);}
     finally{$("commitImport").disabled=false;}
   };
-}
   // User account administration is entirely server-authorized. These controls
   // are only presentation: role checks, audit and last-admin safety live in Python.
   const roleText = {user:"Пользователь",moderator:"Модератор",admin:"Администратор"};
