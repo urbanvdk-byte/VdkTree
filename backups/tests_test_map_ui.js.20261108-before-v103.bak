@@ -1,0 +1,26 @@
+Original path: tests/test_map_ui.js
+Date: 2026-11-08
+SHA-256 UTF-8: 1b8e7a364e56d20520bf3b47f324c19b1a73457b93905b28658ec9860ccbbc63
+Git blob: 0e3530acdd2a5a7016cd64c517f08cf4a4cdf728
+
+===== ORIGINAL FILE =====
+/* v1.0.2 — frontend structure and security contract. */
+"use strict";
+const assert=require("node:assert/strict");
+const fs=require("node:fs");
+const html=fs.readFileSync("index.html","utf8");
+const js=fs.readFileSync("ui/map.js","utf8");
+const css=fs.readFileSync("ui/style.css","utf8");
+for(const token of ["v1.0.2", "ui/map.js", "ui/style.css","auth/client.js","id=\"objectForm\"","id=\"details\"","id=\"addAreaButton\"","id=\"filter\""])
+  assert.ok(html.includes(token), "Missing HTML component: "+token);
+assert.ok(html.includes("ui/management.js"),"Management screens must be included");
+assert.ok(js.includes("map.attributionControl.setPrefix(false)"),"Leaflet logo prefix must stay hidden");
+assert.ok(js.includes("© OpenStreetMap contributors"),"OpenStreetMap credit must remain");
+for(const token of ["vdk-marker","vdk-alert","shrub","confirmed","proposed","needs_clarification","vdk-auth-btn",
+   "/api/v2/objects","/notes","/confirm","editable(","604800","localStorage.getItem"])
+  assert.ok(js.includes(token), "Expected map behavior missing: "+token);
+assert.ok(css.includes(".vdk-marker.shrub"),"Missing blue shrub marker styles");
+assert.ok(css.includes(".vdk-marker.tree.confirmed"),"Missing confirmed green tree styles");
+assert.ok(css.includes(".vdk-marker.tree.proposed"),"Missing proposed grey tree styles");
+assert.ok(!/innerHTML\s*=\s*.*\bo\.comment\b/.test(js),"Never insert raw user comments");
+console.log("Frontend v1.0.2 static contract checks passed");

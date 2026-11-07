@@ -1,4 +1,4 @@
-"""VdkTree v1.0.2: PostgreSQL-backed MAX identity and password sign-in."""
+"""VdkTree v1.0.3: PostgreSQL-backed MAX identity and password sign-in."""
 import hashlib
 import hmac
 import json
@@ -109,6 +109,7 @@ def create_session(db, user_id: str, via_max: bool):
     token = secrets.token_urlsafe(32)
     now = int(time.time())
     db.execute("DELETE FROM sessions WHERE expires_at < ?", (now,))
+    db.execute("UPDATE users SET last_login_at=? WHERE id=?", (now, user_id))
     db.execute("INSERT INTO sessions(token_hash,user_id,expires_at,via_max) VALUES(?,?,?,?)",
                (hashlib.sha256(token.encode()).hexdigest(), user_id, now + SESSION_LIFETIME, int(via_max)))
     return token
@@ -142,6 +143,8 @@ def current_session(credentials: HTTPAuthorizationCredentials | None = Depends(b
         """, (token_hash, int(time.time()))).fetchone()
     if not row:
         raise HTTPException(401, "Сессия истекла или недействительна")
+    if row["is_blocked"]:
+        raise HTTPException(403, "Учётная запись заблокирована администратором")
     return dict(row)
 
 
@@ -157,6 +160,8 @@ def max_login(payload: MaxLogin):
             db.execute("UPDATE users SET display_name=? WHERE id=?",
                        (max_user["display_name"], user["id"]))
         user = db.execute("SELECT * FROM users WHERE max_id=?", (max_user["max_id"],)).fetchone()
+        if user["is_blocked"]:
+            raise HTTPException(403, "Учётная запись заблокирована администратором")
         session = create_session(db, user["id"], True)
     return {"token": session, "user": public_user(user)}
 
@@ -180,6 +185,8 @@ def password_login(payload: PasswordLogin, request: Request):
                            (key, 1, now + 600))
             db.commit()  # Persist rate limit even though the request ends with HTTP 401.
             raise HTTPException(401, "Неправильный логин или пароль")
+        if user["is_blocked"]:
+            raise HTTPException(403, "Учётная запись заблокирована администратором")
         db.execute("DELETE FROM login_limits WHERE key_hash=?", (key,))
         session = create_session(db, user["id"], False)
     return {"token": session, "user": public_user(user)}

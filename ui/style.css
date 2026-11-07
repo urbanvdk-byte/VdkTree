@@ -97,3 +97,27 @@ dialog button.warning{background:#b44632}
  .management-dialog{padding:15px}
  .management-buttons button{font-size:12px}
 }
+
+/* v1.0.3: complete admin Users screen */
+.users-filters{display:grid;grid-template-columns:2fr 1fr 1fr auto;gap:9px;align-items:end;margin:13px 0}
+.users-filters label{min-width:0}
+.users-filters button{height:41px}
+.user-admin-item{display:grid;gap:7px}
+.user-admin-item .help{margin:0}
+.user-role-form{display:grid;grid-template-columns:minmax(140px,1fr) minmax(180px,2fr) auto;gap:9px;align-items:end;padding:12px;background:#eef5ef;border-radius:10px;margin-top:7px}
+.user-role-form label{min-width:0}
+.user-role-form button{min-height:42px}
+.user-history{margin-top:9px;max-height:220px}
+#usersRows{max-height:60vh;overflow:auto;padding-right:4px}
+#usersRows .management-item{margin:9px 0}
+@media(max-width:760px){
+  .users-filters{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
+  .users-filters label:first-child{grid-column:1/-1}
+  .users-filters button{align-self:end}
+  .user-role-form{grid-template-columns:1fr}
+}
+@media(max-width:420px){
+  .users-filters{grid-template-columns:1fr}
+  .users-filters label:first-child{grid-column:auto}
+  .user-role-form{grid-template-columns:1fr}
+}

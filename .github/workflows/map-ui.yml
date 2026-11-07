@@ -7,6 +7,7 @@ on:
       - ui/**
       - .github/workflows/map-ui.yml
       - tests/test_map_ui.js
+      - tests/test_users_ui.js
   pull_request:
     branches: [main]
     paths:
@@ -21,7 +22,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Verify citizen map JavaScript
-        run: node --check ui/map.js
+      - name: Verify map and admin JavaScript
+        run: node --check ui/map.js && node --check ui/management.js
       - name: Verify UI contract
-        run: node tests/test_map_ui.js
+        run: node tests/test_map_ui.js && node tests/test_users_ui.js

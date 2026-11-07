@@ -1,0 +1,33 @@
+Original path: .github/workflows/map-ui.yml
+Date: 2026-11-08
+SHA-256 UTF-8: 2969d58ce6c930d8a21fc559a95ba9decf3ca6bff1c26eecf53b2acb0c71047f
+Git blob: 1d2aec128c9389be2064f7df55acd66a750d2333
+
+===== ORIGINAL FILE =====
+name: VdkTree shared map UI checks
+on:
+  push:
+    branches: [main]
+    paths:
+      - index.html
+      - ui/**
+      - .github/workflows/map-ui.yml
+      - tests/test_map_ui.js
+  pull_request:
+    branches: [main]
+    paths:
+      - index.html
+      - ui/**
+      - .github/workflows/map-ui.yml
+      - tests/test_map_ui.js
+permissions:
+  contents: read
+jobs:
+  map-ui:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify citizen map JavaScript
+        run: node --check ui/map.js
+      - name: Verify UI contract
+        run: node tests/test_map_ui.js

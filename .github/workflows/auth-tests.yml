@@ -42,8 +42,24 @@ jobs:
               db.execute("CREATE TABLE public.users (id INTEGER PRIMARY KEY)")
               db.execute("INSERT INTO public.users(id) VALUES (1234)")
           PY
+      - name: Seed existing savenko before loading admin startup migration
+        run: |
+          python - <<'PY'
+          import time
+          from auth_backend import connect
+          with connect() as db:
+              db.execute("INSERT INTO users(id,max_id,display_name,login,created_at) VALUES (?,?,?,?,?)",
+                         ("seed-savenko-v103", "ci-test-existing", "Участник Savenko", "savenko", int(time.time())))
+          from app import app
+          with connect() as db:
+              row=db.execute("SELECT role FROM users WHERE login='savenko'").fetchone()
+              assert row["role"] == "admin", row
+              migration=db.execute("SELECT outcome FROM admin_bootstrap_history WHERE marker=?",
+                                   ("v1.0.3:existing-login:savenko",)).fetchone()
+              assert migration["outcome"] == "promoted", migration
+          PY
       - name: Compile Python
-        run: python -m compileall -q app.py auth_backend.py inventory_api.py moderation_api.py expert_api.py import_api.py pgdb.py tests
+        run: python -m compileall -q app.py auth_backend.py inventory_api.py moderation_api.py expert_api.py import_api.py users_admin_api.py pgdb.py tests
       - name: Check JavaScript syntax
         run: node --check auth/client.js && node --check ui/map.js && node --check ui/management.js
       - name: Test PostgreSQL MAX and inventory

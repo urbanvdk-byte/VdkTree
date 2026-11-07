@@ -1,0 +1,56 @@
+Original path: .github/workflows/auth-tests.yml
+Date: 2026-11-08
+SHA-256 UTF-8: 1b96ff36830eef8dbbff7abf97fc960f62d4a8828024f9b0ce0af6ee863b85a9
+Git blob: b62cff2b9e0559e825439adcd323218d058c376b
+
+===== ORIGINAL FILE =====
+name: VdkTree authentication checks
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: vdktree_ci
+          POSTGRES_PASSWORD: ci_only_password
+          POSTGRES_DB: vdktree_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U vdktree_ci -d vdktree_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      DATABASE_URL: postgresql://vdktree_ci:ci_only_password@127.0.0.1:5432/vdktree_ci
+      MAX_BOT_TOKEN: test-bot-token-never-real
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install dependencies
+        run: python -m pip install -r requirements.txt pytest httpx
+      - name: Reproduce pre-existing public.users with INTEGER id
+        run: |
+          python - <<'PY'
+          import os
+          import psycopg
+          with psycopg.connect(os.environ["DATABASE_URL"]) as db:
+              db.execute("CREATE TABLE public.users (id INTEGER PRIMARY KEY)")
+              db.execute("INSERT INTO public.users(id) VALUES (1234)")
+          PY
+      - name: Compile Python
+        run: python -m compileall -q app.py auth_backend.py inventory_api.py moderation_api.py expert_api.py import_api.py pgdb.py tests
+      - name: Check JavaScript syntax
+        run: node --check auth/client.js && node --check ui/map.js && node --check ui/management.js
+      - name: Test PostgreSQL MAX and inventory
+        run: python -m pytest -q
