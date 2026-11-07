@@ -1,0 +1,92 @@
+Original path: .github/workflows/bothost-docker.yml
+Date: 2026-11-07
+SHA-256 UTF-8: 540c9b2a4c266c926353f6aacf280af8a5a74be38de264592254262607a47152
+Git blob SHA: 9310d3b8a3cb5e7f445bdd25f354b9555abdcab2
+
+===== ORIGINAL UTF-8 FILE =====
+name: VdkTree BotHost Docker smoke test
+on:
+  push:
+    branches: [main]
+    paths:
+      - Dockerfile
+      - app.py
+      - auth_backend.py
+      - inventory_api.py
+      - moderation_api.py
+      - expert_api.py
+      - import_api.py
+      - inventory/schema_import_v100.sql
+      - pgdb.py
+      - inventory/schema_postgres.sql
+      - requirements.txt
+      - .github/workflows/bothost-docker.yml
+  pull_request:
+    paths:
+      - Dockerfile
+      - app.py
+      - auth_backend.py
+      - inventory_api.py
+      - moderation_api.py
+      - expert_api.py
+      - import_api.py
+      - inventory/schema_import_v100.sql
+      - pgdb.py
+      - inventory/schema_postgres.sql
+      - requirements.txt
+      - .github/workflows/bothost-docker.yml
+
+permissions:
+  contents: read
+
+jobs:
+  docker-smoke:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: vdktree_ci
+          POSTGRES_PASSWORD: ci_only_password
+          POSTGRES_DB: vdktree_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U vdktree_ci -d vdktree_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build Python image
+        run: docker build --pull -t vdktree-bothost:test .
+      - name: Seed incompatible public.users for Docker startup regression
+        run: |
+          docker run --rm --network host \
+            -e DATABASE_URL=postgresql://vdktree_ci:ci_only_password@127.0.0.1:5432/vdktree_ci \
+            --entrypoint python vdktree-bothost:test \
+            -c "import os,psycopg; db=psycopg.connect(os.environ['DATABASE_URL']); db.execute('CREATE TABLE public.users (id INTEGER PRIMARY KEY)'); db.execute('INSERT INTO public.users(id) VALUES (1234)'); db.commit(); db.close()"
+      - name: Start container using PostgreSQL
+        run: >
+          docker run --rm -d --name vdktree-test --network host
+          -e PORT=3000
+          -e DATABASE_URL=postgresql://vdktree_ci:ci_only_password@127.0.0.1:5432/vdktree_ci
+          -e MAX_BOT_TOKEN=test-bot-token-never-real
+          vdktree-bothost:test
+      - name: Verify health and public map API
+        run: |
+          for i in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:3000/api/health | python3 -c 'import json,sys; x=json.load(sys.stdin); assert x["ok"] and x["database"] == "postgresql" and x["version"] == "1.0.1"'; then
+              curl -fsS http://127.0.0.1:3000/api/v2/objects | python3 -c 'import json,sys; assert isinstance(json.load(sys.stdin)["objects"], list)'
+              exit 0
+            fi
+            sleep 2
+          done
+          docker logs vdktree-test
+          exit 1
+      - name: Show logs on failure
+        if: failure()
+        run: docker logs vdktree-test || true
+      - name: Stop container
+        if: always()
+        run: docker stop vdktree-test || true
