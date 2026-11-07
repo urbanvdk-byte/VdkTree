@@ -1,0 +1,84 @@
+Original path: app.py
+Date: 2026-11-07
+SHA-256 UTF-8: 3575254b7977101abcf273573bb52944fc7b56e556a2808f0ff3377d17f3da9e
+Git blob SHA: 2a6f36efb3469f8b981fa1ae67ce44e7795691a0
+
+===== ORIGINAL UTF-8 FILE =====
+"""VdkTree v1.0.1 — FastAPI/MAX/shared inventory on BotHost PostgreSQL."""
+import os
+import re
+from pathlib import Path
+
+from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse, Response
+from fastapi.staticfiles import StaticFiles
+
+from auth_backend import router as auth_router
+from inventory_api import router as inventory_router
+from moderation_api import router as moderation_router
+from expert_api import router as expert_router
+from import_api import router as import_router
+from pgdb import connect
+
+BASE = Path(__file__).resolve().parent
+app = FastAPI(title="VdkTree", version="1.0.1")
+allowed_origins = [
+    "https://urbanvdk-byte.github.io",
+    "https://vdktree.bothost.tech",
+]
+allowed_origins += [
+    origin.strip()
+    for origin in os.environ.get("ALLOWED_ORIGINS", "").split(",")
+    if origin.strip()
+]
+app.add_middleware(
+    CORSMiddleware, allow_origins=allowed_origins,
+    allow_methods=["GET", "POST", "PATCH"],
+    allow_headers=["Authorization", "Content-Type"]
+)
+app.include_router(auth_router)
+app.include_router(inventory_router)
+app.include_router(moderation_router)
+app.include_router(expert_router)
+app.include_router(import_router)
+
+app.mount("/auth", StaticFiles(directory=BASE / "auth"), name="auth")
+app.mount("/ui", StaticFiles(directory=BASE / "ui"), name="ui")
+
+
+@app.get("/")
+def home():
+    return FileResponse(BASE / "index.html")
+
+
+@app.get("/api/health")
+def health():
+    # A healthy HTTP process is not enough: verify PostgreSQL connectivity too.
+    with connect() as con:
+        con.execute("SELECT 1")
+    return {"ok": True, "version": "1.0.1", "database": "postgresql"}
+
+
+@app.get("/photos/{filename}")
+def photo(filename: str):
+    # Images are public map assets; never return arbitrary database blobs.
+    if not re.fullmatch(r"[0-9a-f]{40}\.(jpg|png|webp)", filename):
+        raise HTTPException(404, "Фотография не найдена")
+    with connect() as con:
+        row = con.execute(
+            "SELECT mime_type,content FROM inventory_photos WHERE storage_key=?",
+            (filename,),
+        ).fetchone()
+    if not row:
+        raise HTTPException(404, "Фотография не найдена")
+    return Response(
+        content=bytes(row["content"]),
+        media_type=row["mime_type"],
+        headers={"Cache-Control": "public, max-age=86400", "X-Content-Type-Options": "nosniff"},
+    )
+
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=int(os.environ.get("PORT", "3000")))
