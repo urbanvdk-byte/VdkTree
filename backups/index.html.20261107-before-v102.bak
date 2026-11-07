@@ -1,0 +1,131 @@
+Original path: index.html
+Date: 2026-11-07
+SHA-256 UTF-8: 149d712273cecf1f0682373e0d92844a30fef6b22d27cdcc4c4f91b9455df1a6
+Git blob SHA: b9fb5da768d2896b55ef1b4baa64ce7911d211f0
+
+===== ORIGINAL UTF-8 FILE =====
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#18753e">
+<title>Деревья Владивостока — общественная карта</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<link rel="stylesheet" href="./ui/style.css">
+<link rel="stylesheet" href="./auth/auth.css">
+</head>
+<body>
+<header>
+  <h1>🌳 Деревья Владивостока</h1>
+  <span class="version">v1.0.1</span>
+</header>
+<div id="map" aria-label="Карта зелёных насаждений Владивостока"></div>
+<div id="controls">
+ <select id="filter" aria-label="Фильтр объектов карты">
+  <option value="all">Все объекты</option>
+  <option value="tree">🌳 Деревья</option>
+  <option value="shrub">🔵 Кустарники</option>
+  <option value="proposed">⚪ Предложено</option>
+  <option value="confirmed">🟢 Произрастает</option>
+  <option value="notes">🔴 Требует уточнения</option>
+  <option value="area">🟩 Площадные объекты</option>
+ </select>
+ <button id="locate" type="button" title="Показать моё местоположение">📍 Я здесь</button>
+</div>
+<div id="legend">
+ <div><i class="legend-dot" style="background:#9ca3af"></i>Предложено</div>
+ <div><i class="legend-dot" style="background:#259d55"></i>Произрастает</div>
+ <div><i class="legend-dot" style="background:#42b8e6"></i>Кустарник</div>
+ <div><i class="legend-dot" style="background:#e43d36"></i>Есть замечание</div>
+</div>
+<div id="toast" role="status" aria-live="polite">Загружаем общую карту…</div>
+<button id="addAreaButton" type="button">▧ Добавить площадь</button>
+<button id="addButton" type="button">＋ Добавить растение</button>
+<div id="drawControls" aria-live="polite">
+ <p>Нажимайте на карте по углам территории (минимум 3 точки).</p>
+ <button id="finishArea" type="button">Готово</button>
+ <button id="cancelArea" type="button" class="secondary">Отмена</button>
+</div>
+
+<dialog id="editor" aria-label="Добавление или редактирование растения">
+ <form id="objectForm">
+  <h2 id="editor-title">Новое растение</h2>
+  <p class="help">Начните с простых сведений. Породу и характеристики можно не знать.</p>
+  <label>Тип объекта
+   <select name="object_type" id="objectType">
+    <option value="tree">Дерево</option>
+    <option value="shrub">Кустарник</option>
+    <option value="lawn">Газон</option>
+    <option value="flowerbed">Цветник</option>
+    <option value="natural_community">Природное сообщество</option>
+   </select>
+  </label>
+  <div id="pointInputs">
+   <label>Широта<input name="lat" type="number" step="any" required></label>
+   <label>Долгота<input name="lon" type="number" step="any" required></label>
+   <button type="button" id="choosePoint" class="secondary">📍 Указать место на карте</button>
+  </div>
+  <p id="areaInfo" class="help" hidden>Контур территории уже выбран на карте.</p>
+  <label>Название растения / вид (можно оставить пустым)
+   <input name="species_common" maxlength="120" placeholder="Например, дуб монгольский">
+  </label>
+  <label>Примерная высота
+   <select name="approx_height_band">
+    <option value="unknown">Не знаю</option>
+    <option value="under_2m">До 2 м</option>
+    <option value="2_5m">2–5 м</option>
+    <option value="5_10m">5–10 м</option>
+    <option value="over_10m">Более 10 м</option>
+   </select>
+  </label>
+  <label>Примерная толщина ствола, см (необязательно)
+   <input name="approx_diameter_cm" type="number" min="0.1" max="1000" step="0.1">
+  </label>
+  <label>Внешнее состояние
+   <select name="visible_condition">
+    <option value="unknown">Не знаю</option>
+    <option value="looks_healthy">Выглядит здоровым</option>
+    <option value="damaged">Есть повреждения</option>
+    <option value="dry">Засохшее</option>
+   </select>
+  </label>
+  <span class="help">Видимые повреждения (необязательно)</span>
+  <div id="damage-group">
+   <label><input type="checkbox" name="damage" value="broken_branches">Сломанные ветки</label>
+   <label><input type="checkbox" name="damage" value="hollow">Дупло</label>
+   <label><input type="checkbox" name="damage" value="cracks">Трещины</label>
+   <label><input type="checkbox" name="damage" value="leaning">Наклон</label>
+   <label><input type="checkbox" name="damage" value="dry_crown">Сухая крона</label>
+   <label><input type="checkbox" name="damage" value="other">Другое</label>
+  </div>
+  <label>Когда наблюдали
+   <input name="observed_on" type="date">
+  </label>
+  <label>Фотографии (до 5 МБ каждая, до 8 шт.)
+   <input name="photos" type="file" accept="image/jpeg,image/png,image/webp" multiple>
+  </label>
+  <label>Комментарий
+   <textarea name="comment" maxlength="1000" rows="3" placeholder="Что ещё стоит знать об объекте?"></textarea>
+  </label>
+  <span id="editor-status" role="status"></span>
+  <div class="dialog-actions">
+   <button type="submit" id="saveObject">Сохранить</button>
+   <button type="button" id="cancelEdit" class="secondary">Отмена</button>
+  </div>
+ </form>
+</dialog>
+<dialog id="details" aria-label="Карточка объекта">
+ <div id="card-content"></div>
+ <p id="detail-status" role="status"></p>
+ <div class="dialog-actions"><button id="closeDetails" type="button" class="secondary">Закрыть</button></div>
+</dialog>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://st.max.ru/js/max-web-app.js"></script>
+<script src="./auth/config.js"></script>
+<script src="./auth/client.js"></script>
+<script src="./ui/map.js"></script>
+<script src="./ui/management.js"></script>
+</body>
+</html>
