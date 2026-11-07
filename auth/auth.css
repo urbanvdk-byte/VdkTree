@@ -22,3 +22,12 @@
 #vdk-auth-dialog .vdk-existing-login form{margin-top:15px}
 #vdk-auth-dialog .vdk-auth-dismiss{margin-top:4px}
 #vdk-auth-dialog .error{line-height:1.5;overflow-wrap:anywhere}
+
+/* v1.0.2: browser MAX sign-in and Mini App approval */
+#vdk-auth-dialog .vdk-max-pair{background:#f1f7f1;border:1px solid #bfd8c5;border-radius:11px;padding:12px;margin:11px 0}
+#vdk-auth-dialog .vdk-max-pair[hidden]{display:none}
+#vdk-auth-dialog .vdk-pair-code{font-family:ui-monospace,Consolas,monospace;font-size:26px;letter-spacing:3px;text-align:center;font-weight:750;background:#fff;border:1px dashed #88ab91;padding:12px 8px;border-radius:9px;user-select:all}
+#vdk-auth-dialog #vdk-max-approve{margin:14px 0 18px;border-top:1px solid #d5e1d8;padding-top:10px}
+#vdk-auth-dialog #vdk-max-approve:empty{display:none}
+#vdk-auth-dialog #vdk-max-approve h3{font-size:15px;margin:6px 0}
+#vdk-auth-dialog #vdk-approve-status{overflow-wrap:anywhere}
