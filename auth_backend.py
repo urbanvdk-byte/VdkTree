@@ -1,4 +1,4 @@
-"""VdkTree v0.7.0: PostgreSQL-backed MAX identity and password sign-in."""
+"""VdkTree v1.0.2: PostgreSQL-backed MAX identity and password sign-in."""
 import hashlib
 import hmac
 import json
@@ -125,7 +125,7 @@ class PasswordLogin(BaseModel):
 
 class NewCredentials(BaseModel):
     login: str = Field(min_length=4, max_length=32)
-    password: str = Field(min_length=12, max_length=128)
+    password: str = Field(min_length=8, max_length=128)
 
 
 def current_session(credentials: HTTPAuthorizationCredentials | None = Depends(bearer)):
