@@ -1,10 +1,13 @@
-// VdkTree v0.6.0 — clear MAX-first onboarding and optional password login.
+// VdkTree v1.0.2 — MAX Mini App browser pairing and optional 8-character password.
 (() => {
   "use strict";
   const api = String(window.VDK_AUTH_API || "").replace(/\/$/, "");
   const storageKey = "vdktree-auth-session-v040";
   let token = "";
   let user = null;
+  let pairing = null;
+  let pairingTimer = null;
+  let pairingBusy = false;
   try { token = sessionStorage.getItem(storageKey) || ""; } catch (_) {}
 
   const header = document.querySelector("header");
@@ -25,7 +28,13 @@
     if (typeof window.dispatchEvent === "function" && typeof Event === "function")
       window.dispatchEvent(new Event("vdktree:auth"));
   }
+  function stopPairing() {
+    if (pairingTimer !== null) clearInterval(pairingTimer);
+    pairingTimer = null;
+    pairing = null;
+  }
   function saveSession(data) {
+    stopPairing();
     token = data.token;
     user = data.user;
     try { sessionStorage.setItem(storageKey, token); } catch (_) {}
@@ -33,6 +42,7 @@
     notifyLogin();
   }
   function clearSession() {
+    stopPairing();
     token = ""; user = null;
     try { sessionStorage.removeItem(storageKey); } catch (_) {}
     drawButton();
@@ -79,8 +89,14 @@
           <li>Нажмите в чате кнопку <strong>«Открыть»</strong> для запуска мини-приложения.</li>
         </ol>
         <a class="vdk-auth-open-max" href="https://max.ru/id2540275814_1_bot" target="_blank" rel="noopener noreferrer">Открыть бота в MAX</a>
-        <p class="minor">Вход из мини-приложения MAX происходит автоматически. После него вы сможете создать логин и пароль для входа с сайта.</p>
-        <button type="button" id="vdk-try-max" class="secondary">Проверить вход через MAX</button>
+        <p class="minor">Внутри мини-приложения MAX вход происходит автоматически. Для входа с обычного браузера используйте одноразовый код.</p>
+        <button type="button" id="vdk-try-max" class="secondary">Войти через MAX по коду</button>
+        <div id="vdk-max-pair" class="vdk-max-pair" hidden>
+          <p><strong>Ваш код для входа:</strong></p>
+          <div id="vdk-pair-code" class="vdk-pair-code" aria-live="polite"></div>
+          <p>Откройте мини-приложение VdkTree через бота MAX, нажмите «Войти» (или профиль), выберите «Подтвердить вход в браузере» и введите этот код. Вернитесь сюда — вход выполнится автоматически.</p>
+          <p class="minor">Код действует 5 минут. Никому не передавайте его.</p>
+        </div>
         <details class="vdk-existing-login">
           <summary>У меня уже есть логин и пароль</summary>
           <form id="vdk-login-form">
@@ -105,17 +121,14 @@
           draw();
         } catch (e) { error.textContent = e.message; }
       };
-      panel.querySelector("#vdk-close").onclick = () => dialog.close();
-      panel.querySelector("#vdk-try-max").onclick = async () => {
-        const error = panel.querySelector("#vdk-auth-error");
-        error.textContent = "Проверяем вход через MAX...";
-        await loginWithMAX();
-      };
+      panel.querySelector("#vdk-close").onclick = () => { stopPairing(); dialog.close(); };
+      panel.querySelector("#vdk-try-max").onclick = startBrowserPairing;
     } else {
       panel.innerHTML = `
         <h2>Мой профиль</h2>
         <p id="vdk-user-greeting"></p>
         <div id="vdk-create-credentials"></div>
+        <div id="vdk-max-approve"></div>
         <button type="button" id="vdk-logout" class="secondary">Выйти</button>
         <button type="button" id="vdk-close" class="secondary">Закрыть</button>
         <p role="alert" class="error" id="vdk-auth-error"></p>`;
@@ -128,11 +141,11 @@
             <label>Новый логин (латиница, 4–32 символа)
               <input name="login" minlength="4" maxlength="32" pattern="[A-Za-z0-9_-]+" autocomplete="username" required>
             </label>
-            <label>Пароль (не менее 12 символов)
-              <input name="password" type="password" minlength="12" maxlength="128" autocomplete="new-password" required>
+            <label>Пароль (не менее 8 символов)
+              <input name="password" type="password" minlength="8" maxlength="128" autocomplete="new-password" required>
             </label>
             <label>Повторите пароль
-              <input name="confirm" type="password" minlength="12" maxlength="128" autocomplete="new-password" required>
+              <input name="confirm" type="password" minlength="8" maxlength="128" autocomplete="new-password" required>
             </label>
             <button type="submit">Сохранить логин и пароль</button>
           </form>
@@ -154,6 +167,30 @@
       } else {
         panel.querySelector("#vdk-create-credentials").textContent = "Логин создан: " + user.login;
       }
+      // A browser code can only be approved while running inside the signed MAX Mini App.
+      if (signedLaunchData()) {
+        const approval = panel.querySelector("#vdk-max-approve");
+        approval.innerHTML = `
+          <h3>Подтвердить вход в браузере</h3>
+          <p class="minor">Откройте сайт VdkTree в обычном браузере, нажмите «Войти через MAX по коду», затем введите показанный там код здесь. Подтверждайте только свой вход.</p>
+          <form id="vdk-approve-form">
+            <label>Код из браузера
+              <input name="code" maxlength="12" autocomplete="off" autocapitalize="characters" required placeholder="8 символов">
+            </label>
+            <button type="submit">Подтвердить вход в браузере</button>
+          </form>
+          <p id="vdk-approve-status" role="status" class="minor"></p>`;
+        approval.querySelector("form").onsubmit = async event => {
+          event.preventDefault();
+          const status = approval.querySelector("#vdk-approve-status");
+          const code = event.currentTarget.elements.code.value.trim().toUpperCase();
+          status.textContent = "Подтверждаем...";
+          try {
+            await send("device/approve", {code, init_data: signedLaunchData()});
+            status.textContent = "Вход подтверждён. Вернитесь в браузер — авторизация произойдёт автоматически.";
+          } catch (e) { status.textContent = e.message; }
+        };
+      }
       panel.querySelector("#vdk-logout").onclick = async () => {
         try { await send("logout"); } catch (_) {}
         clearSession();
@@ -169,6 +206,44 @@
       ...options, headers: {...(options.headers || {}), ...(token ? {Authorization:"Bearer " + token} : {})}
     })
   };
+
+  async function startBrowserPairing() {
+    stopPairing();
+    const error = dialog.querySelector("#vdk-auth-error");
+    const section = dialog.querySelector("#vdk-max-pair");
+    if (error) error.textContent = "Создаём одноразовый код...";
+    try {
+      const result = await send("device/start");
+      pairing = {id:result.request_id,verifier:result.verifier};
+      section.hidden = false;
+      section.querySelector("#vdk-pair-code").textContent = result.code;
+      if (error) error.textContent = "Ожидаем подтверждение через MAX...";
+      pairingTimer = setInterval(() => { void checkBrowserPairing(); }, 2000);
+    } catch (e) {
+      if (error) error.textContent = e.message;
+    }
+  }
+
+  async function checkBrowserPairing() {
+    if (!pairing || pairingBusy || user) return;
+    pairingBusy = true;
+    const requested = pairing;
+    try {
+      const result = await send("device/poll", {
+        request_id:requested.id, verifier:requested.verifier
+      });
+      if (pairing !== requested) return;
+      if (result.status === "authenticated") {
+        saveSession(result);
+        if (dialog.open) draw();
+      }
+    } catch (e) {
+      if (pairing !== requested) return;
+      stopPairing();
+      const error = dialog.querySelector("#vdk-auth-error");
+      if (error) error.textContent = e.message;
+    } finally { pairingBusy = false; }
+  }
 
   // Only signed launch data is sent to BotHost. Never authenticate using initDataUnsafe.
   function signedLaunchData() {
