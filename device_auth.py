@@ -1,4 +1,4 @@
-"""VdkTree v1.0.2 — one-time browser sign-in approved by signed MAX Mini App."""
+"""VdkTree v1.0.3 — one-time browser sign-in approved by signed MAX Mini App."""
 import hashlib
 import hmac
 import secrets
@@ -97,10 +97,12 @@ def approve(payload: Approval):
         raise HTTPException(422,"Неверный формат кода")
     now=int(time.time())
     with connect() as db:
-        account=db.execute("SELECT id FROM users WHERE max_id=?",
+        account=db.execute("SELECT id,is_blocked FROM users WHERE max_id=?",
                            (signed_user["max_id"],)).fetchone()
         if not account:
             raise HTTPException(403,"Сначала откройте VdkTree внутри MAX")
+        if account["is_blocked"]:
+            raise HTTPException(403,"Учётная запись заблокирована")
         challenge=db.execute("""
             SELECT id,status,expires_at FROM browser_login_requests
             WHERE code_hash=? FOR UPDATE
@@ -136,6 +138,8 @@ def poll(payload: Poll):
                         (row["approved_user_id"],)).fetchone()
         if not user:
             raise HTTPException(410,"Пользователь MAX не найден")
+        if user["is_blocked"]:
+            raise HTTPException(403,"Учётная запись заблокирована")
         token=create_session(db,user["id"],True)
         db.execute("UPDATE browser_login_requests SET status='consumed' WHERE id=?",
                    (row["id"],))
