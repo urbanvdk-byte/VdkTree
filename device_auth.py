@@ -1,0 +1,142 @@
+"""VdkTree v1.0.2 — one-time browser sign-in approved by signed MAX Mini App."""
+import hashlib
+import hmac
+import secrets
+import time
+
+from fastapi import APIRouter, HTTPException, Request
+from pydantic import BaseModel, Field
+
+from auth_backend import create_session, public_user, verify_max_init_data
+from pgdb import connect
+
+router = APIRouter(prefix="/api/auth/device", tags=["auth"])
+CODE_ALPHABET = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ"
+CODE_LENGTH = 8
+LIFETIME = 300
+
+
+def setup():
+    with connect() as db:
+        db.executescript("""
+        CREATE TABLE IF NOT EXISTS browser_login_requests (
+            id TEXT PRIMARY KEY,
+            verifier_hash TEXT NOT NULL,
+            code_hash TEXT NOT NULL UNIQUE,
+            requester_hash TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'pending'
+                CHECK(status IN ('pending','approved','consumed')),
+            approved_user_id TEXT REFERENCES users(id),
+            created_at INTEGER NOT NULL,
+            expires_at INTEGER NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS browser_login_expiry_idx
+            ON browser_login_requests(expires_at);
+        CREATE INDEX IF NOT EXISTS browser_login_requester_idx
+            ON browser_login_requests(requester_hash,created_at);
+        """)
+
+
+setup()
+
+
+class Approval(BaseModel):
+    code: str = Field(min_length=8, max_length=12)
+    init_data: str = Field(min_length=1, max_length=8192)
+
+
+class Poll(BaseModel):
+    request_id: str = Field(min_length=32, max_length=32)
+    verifier: str = Field(min_length=32, max_length=128)
+
+
+def digest(value: str) -> str:
+    return hashlib.sha256(value.encode("utf-8")).hexdigest()
+
+
+@router.post("/start", status_code=201)
+def start(request: Request):
+    now = int(time.time())
+    source = request.client.host if request.client else "unknown"
+    source_hash = digest(source)
+    request_id = secrets.token_hex(16)
+    verifier = secrets.token_urlsafe(32)
+    with connect() as db:
+        db.execute("DELETE FROM browser_login_requests WHERE expires_at < ?", (now-3600,))
+        # Restrict unauthenticated challenge creation. Do not store raw client IP.
+        count = db.execute("""
+            SELECT COUNT(*) FROM browser_login_requests
+            WHERE requester_hash=? AND created_at > ?
+        """, (source_hash,now-600)).fetchone()[0]
+        if count >= 30:
+            raise HTTPException(429,"Слишком много попыток. Попробуйте позже.")
+        for _ in range(5):
+            code = "".join(secrets.choice(CODE_ALPHABET) for _ in range(CODE_LENGTH))
+            if not db.execute(
+                "SELECT 1 FROM browser_login_requests WHERE code_hash=?", (digest(code),)
+            ).fetchone():
+                break
+        else:
+            raise HTTPException(503,"Не удалось создать код. Повторите запрос.")
+        db.execute("""
+            INSERT INTO browser_login_requests
+                (id,verifier_hash,code_hash,requester_hash,created_at,expires_at)
+            VALUES (?,?,?,?,?,?)
+        """,(request_id,digest(verifier),digest(code),source_hash,now,now+LIFETIME))
+    return {"request_id":request_id,"verifier":verifier,"code":code,
+            "expires_in":LIFETIME}
+
+
+@router.post("/approve")
+def approve(payload: Approval):
+    # A previously created browser password session is NOT sufficient to approve.
+    # A recent signed MAX Mini App launch is required.
+    signed_user = verify_max_init_data(payload.init_data)
+    code = payload.code.replace("-", "").replace(" ", "").upper()
+    if len(code)!=CODE_LENGTH or any(c not in CODE_ALPHABET for c in code):
+        raise HTTPException(422,"Неверный формат кода")
+    now=int(time.time())
+    with connect() as db:
+        account=db.execute("SELECT id FROM users WHERE max_id=?",
+                           (signed_user["max_id"],)).fetchone()
+        if not account:
+            raise HTTPException(403,"Сначала откройте VdkTree внутри MAX")
+        challenge=db.execute("""
+            SELECT id,status,expires_at FROM browser_login_requests
+            WHERE code_hash=? FOR UPDATE
+        """,(digest(code),)).fetchone()
+        if not challenge or challenge["status"]!="pending" or challenge["expires_at"]<=now:
+            raise HTTPException(400,"Код не найден, уже использован или истёк")
+        db.execute("""
+            UPDATE browser_login_requests
+            SET status='approved',approved_user_id=?
+            WHERE id=?
+        """,(account["id"],challenge["id"]))
+    return {"ok":True,"status":"approved"}
+
+
+@router.post("/poll")
+def poll(payload: Poll):
+    now=int(time.time())
+    with connect() as db:
+        row=db.execute("""
+            SELECT * FROM browser_login_requests WHERE id=? FOR UPDATE
+        """,(payload.request_id,)).fetchone()
+        if not row or not hmac.compare_digest(
+            row["verifier_hash"],digest(payload.verifier)
+        ):
+            raise HTTPException(401,"Недействительный запрос входа")
+        if row["expires_at"]<=now:
+            raise HTTPException(410,"Срок действия кода истёк. Запросите новый код.")
+        if row["status"]=="consumed":
+            raise HTTPException(410,"Код уже использован")
+        if row["status"]=="pending":
+            return {"status":"pending"}
+        user=db.execute("SELECT * FROM users WHERE id=?",
+                        (row["approved_user_id"],)).fetchone()
+        if not user:
+            raise HTTPException(410,"Пользователь MAX не найден")
+        token=create_session(db,user["id"],True)
+        db.execute("UPDATE browser_login_requests SET status='consumed' WHERE id=?",
+                   (row["id"],))
+    return {"status":"authenticated","token":token,"user":public_user(user)}
