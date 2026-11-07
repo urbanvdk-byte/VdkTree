@@ -84,8 +84,7 @@ async function main(){
   assert.equal(panel.querySelector("#vdk-max-pair").querySelector("#vdk-pair-code").textContent,"ABCDEF23");
   assert.equal(browser.timers.length,1);
   browser.config.approved=true;
-  browser.timers[0].callback();
-  await new Promise(resolve=>setImmediate(resolve));
+  await browser.timers[0].callback();
   assert.equal(browser.header.authButton.textContent,"Тест MAX");
   assert.equal(browser.timers[0].active,false);
   assert.equal(browser.storage.size,1);
