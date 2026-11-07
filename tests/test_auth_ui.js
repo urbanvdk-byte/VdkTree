@@ -81,7 +81,7 @@ async function main(){
   await panel.querySelector("#vdk-try-max").onclick();
   assert.equal(browser.requests.length,1);
   assert.match(browser.requests[0].url,/\/api\/auth\/device\/start$/);
-  assert.equal(panel.querySelector("#vdk-pair-code").textContent,"ABCDEF23");
+  assert.equal(panel.querySelector("#vdk-max-pair").querySelector("#vdk-pair-code").textContent,"ABCDEF23");
   assert.equal(browser.timers.length,1);
   browser.config.approved=true;
   await browser.timers[0].callback();
