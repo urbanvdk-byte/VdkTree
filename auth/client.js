@@ -218,7 +218,7 @@
       section.hidden = false;
       section.querySelector("#vdk-pair-code").textContent = result.code;
       if (error) error.textContent = "Ожидаем подтверждение через MAX...";
-      pairingTimer = setInterval(() => { void checkBrowserPairing(); }, 2000);
+      pairingTimer = setInterval(checkBrowserPairing, 2000);
     } catch (e) {
       if (error) error.textContent = e.message;
     }
