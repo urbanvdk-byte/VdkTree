@@ -1,4 +1,4 @@
-"""VdkTree v1.0.0 — FastAPI/MAX/shared inventory on BotHost PostgreSQL."""
+"""VdkTree v1.0.1 — FastAPI/MAX/shared inventory on BotHost PostgreSQL."""
 import os
 import re
 from pathlib import Path
@@ -16,7 +16,7 @@ from import_api import router as import_router
 from pgdb import connect
 
 BASE = Path(__file__).resolve().parent
-app = FastAPI(title="VdkTree", version="1.0.0")
+app = FastAPI(title="VdkTree", version="1.0.1")
 allowed_origins = [
     "https://urbanvdk-byte.github.io",
     "https://vdktree.bothost.tech",
@@ -51,7 +51,7 @@ def health():
     # A healthy HTTP process is not enough: verify PostgreSQL connectivity too.
     with connect() as con:
         con.execute("SELECT 1")
-    return {"ok": True, "version": "1.0.0", "database": "postgresql"}
+    return {"ok": True, "version": "1.0.1", "database": "postgresql"}
 
 
 @app.get("/photos/{filename}")

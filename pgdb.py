@@ -1,8 +1,9 @@
-"""VdkTree v0.7.0 — PostgreSQL connection for all runtime data.
+"""VdkTree v1.0.1 — PostgreSQL connection for all runtime data.
 
 DATABASE_URL is stored only in BotHost. No credentials, dumps or URLs in Git.
 """
 import os
+import threading
 from contextlib import contextmanager
 
 import psycopg
@@ -48,7 +49,34 @@ def get_database_url():
     return url
 
 
+# Keep VdkTree tables separate from tables that BotHost or other apps may
+# already have in public (e.g. public.users with an INTEGER primary key).
+# Never drop, alter, or copy unrelated tables.
+_SCHEMA = "vdktree"
+_schema_lock = threading.Lock()
+_schema_ready = False
+
+
+def ensure_schema():
+    global _schema_ready
+    if _schema_ready:
+        return
+    with _schema_lock:
+        if _schema_ready:
+            return
+        with psycopg.connect(get_database_url(), connect_timeout=10) as raw:
+            raw.execute("CREATE SCHEMA IF NOT EXISTS vdktree")
+        # Mark ready only after the CREATE SCHEMA transaction has committed.
+        _schema_ready = True
+
+
 @contextmanager
 def connect():
-    with psycopg.connect(get_database_url(), row_factory=hybrid_row, connect_timeout=10) as raw:
+    ensure_schema()
+    # No 'public' fallback: every unqualified table and foreign-key target must
+    # resolve in vdktree, so public.users can never collide with VdkTree.users.
+    with psycopg.connect(
+        get_database_url(), row_factory=hybrid_row, connect_timeout=10,
+        options="-c search_path=vdktree"
+    ) as raw:
         yield Connection(raw)

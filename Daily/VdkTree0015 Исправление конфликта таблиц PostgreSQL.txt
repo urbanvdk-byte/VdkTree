@@ -1,0 +1,68 @@
+VdkTree0015 — Исправление конфликта таблиц PostgreSQL
+Дата: 07.11.2026
+Репозиторий: urbanvdk-byte/VdkTree
+Версия: v1.0.1
+Ветка разработки: fix/v101-isolated-postgres-schema
+Pull request: https://github.com/urbanvdk-byte/VdkTree/pull/5
+
+1. ИСХОДНАЯ НЕИСПРАВНОСТЬ
+После сборки Python-образа v1.0.0 BotHost показывал «404 page not found», статус контейнера restarting. Из логов работы получено точное исключение:
+  psycopg.errors.DatatypeMismatch: foreign key constraint "sessions_user_id_fkey" cannot be implemented
+  DETAIL: Key columns "user_id" and "id" are of incompatible types: text and integer.
+Падение возникало при импорте auth_backend.py → setup() → pgdb.py executescript(), то есть до запуска Uvicorn. Docker-сборка прошла успешно, но работающий HTTP-сервер не поднялся; 404 являлся следствием отсутствия запущенного приложения.
+
+2. ПРИЧИНА
+В базе PostgreSQL уже существовала таблица public.users с первичным ключом id INTEGER (или числовым типом), не соответствующим схеме VdkTree. Код auth_backend.py выполнял CREATE TABLE IF NOT EXISTS users (id TEXT ...) без указания схемы: PostgreSQL не создавал новую таблицу, поскольку public.users уже существовала. Затем команда CREATE TABLE sessions пыталась создать user_id TEXT REFERENCES users(id), где users.id INTEGER, и PostgreSQL отказал в объявлении внешнего ключа. Автоматические тесты прошлых версий работали на полностью пустой тестовой базе, поэтому не обнаружили конфликт общих имён таблиц.
+
+3. ИСПРАВЛЕНИЕ v1.0.1
+В pgdb.py создано строгое разделение пространства имён VdkTree:
+- При первом подключении приложение автоматически выполняет CREATE SCHEMA IF NOT EXISTS vdktree в той же PostgreSQL DATABASE_URL.
+- Создание схемы контролируется блокировкой threading.Lock; флаг готовности выставляется только после успешного COMMIT.
+- Каждое рабочее соединение psycopg 3 устанавливает options="-c search_path=vdktree".
+- В search_path НЕТ схемы public, поэтому незаключённые в кавычки имена users, sessions, login_limits, inventory_objects и всех остальных таблиц относятся только к vdktree.
+- Существующие таблицы public.users и любые другие таблицы public не удаляются, не изменяются, не переименовываются, их данные остаются на месте.
+- MAX-авторизация, роли, сессии, все растения, фотографии, импортные пакеты и аудит работают в одной отдельной схеме vdktree в прежней PostgreSQL DATABASE_URL.
+- Новые переменные окружения, другой сервер БД, ручной SQL и удаление старой базы не требуются.
+- Исправление доступно при условии, что роль PostgreSQL из DATABASE_URL имеет стандартное право CREATE SCHEMA в своей базе. Если нет, в логах будет отдельная ошибка permission denied, тогда требуется настройка прав роли в BotHost.
+
+4. ВЕРСИЯ И ИНТЕРФЕЙС
+- app.py: версия FastAPI и /api/health поднята с 1.0.0 до 1.0.1.
+- index.html: версия v1.0.1 отображается в правом верхнем углу сайта.
+- Поведение карты, карточек, модерации, импорта и авторизации MAX не менялось.
+- BOTHOST.md: добавлено описание схемы vdktree; ожидаемый ответ /api/health обновлён.
+- inventory/RELEASE_V100.md: админские SQL-запросы заменены с FROM users / UPDATE users на FROM vdktree.users / UPDATE vdktree.users. Это важно: применение старого запроса к public.users было бы небезопасно для чужой таблицы.
+
+5. ПРОВЕРКИ И ВЫЯВЛЕННЫЕ ОШИБКИ
+- .github/workflows/auth-tests.yml: перед загрузкой app.py создаётся тестовая public.users(id INTEGER PRIMARY KEY) и добавляется существующая строка id=1234.
+- tests/test_postgres_schema_isolation.py: проверяется сохранность public.users.id=1234, INTEGER-тип её ключа, тип TEXT в vdktree.users, наличие таблиц авторизации/инвентаризации/импорта в vdktree, а также внешняя ссылка vdktree.sessions_user_id_fkey на vdktree.users.
+- .github/workflows/bothost-docker.yml: аналогичная тестовая public.users(id INTEGER) создаётся ДО старта Docker-контейнера. Проверяется запуск контейнера, /api/health и общий API списка объектов.
+- Исходная тестовая проверка JavaScript завершилась FAILURE только из-за прежнего литерала v1.0.0 в tests/test_map_ui.js, когда версия HTML уже стала v1.0.1; тест обновлён. Это не ошибка карты или БД.
+- После исправления ожидается полный зелёный проход CI на последнем коммите PR. В предыдущем прогоне с моделированием конфликтной public.users тесты Python и Docker уже были SUCCESS.
+- Тестовая PostgreSQL GitHub Actions не является реальной базой пользователя BotHost. Реальный статус сможет быть подтверждён только после обновления бота.
+
+6. РЕЗЕРВНЫЕ КОПИИ
+Перед каждым изменением исходного существующего файла созданы резервные копии с исходным путём, датой, Git SHA и контрольным SHA-256 UTF-8. Каждая копия была прочитана обратно из GitHub и сверена с оригиналом до замены:
+- pgdb.py: backups/pgdb.py.20261107-before-schema-v101.bak
+  SHA-256 5eaa4edc7d281f3d8edacdb557c86d6eef2f7743301dcce30554d4625404c52e
+- app.py: backups/app.py.20261107-before-schema-v101.bak
+  SHA-256 07a0c9801a2725ee0efa598e0ef07cb26bf3b961bc2af268277120df8a0ad36b
+- index.html: backups/index.html.20261107-before-schema-v101.bak
+  SHA-256 38334ae05758e9b084534d8a04b7868192c76b91b7eb480eb1aebebf2112211e
+- .github/workflows/auth-tests.yml: backups/.github_workflows_auth-tests.yml.20261107-before-schema-v101.bak
+  SHA-256 d3fc45bd1fdaf3bc74cada7aae902ee112041f54dd30c267263914f5b423876c
+- .github/workflows/bothost-docker.yml: backups/.github_workflows_bothost-docker.yml.20261107-before-schema-v101.bak
+  SHA-256 593d042275a91411e6c730620e0ba4b539bf977c38b39e6a8760eff7bc52a522
+- BOTHOST.md: backups/BOTHOST.md.20261107-before-schema-v101.bak
+  SHA-256 e0c7b75c193de28a3138009e49d9cce55533ea9d02f5e1c1d63103e7729edcc0
+- inventory/RELEASE_V100.md: backups/inventory_RELEASE_V100.md.20261107-before-schema-v101.bak
+  SHA-256 80558739223ad2757309f2d0d73357d003daca95099d32223433d1c8a0685de2
+- tests/test_map_ui.js: backups/tests_test_map_ui.js.20261107-before-schema-v101.bak
+  SHA-256 3657b5c56ff81f480bcb9cbe52fe03ea199c552d49ae9873e1b64abf1c809515
+- tests/test_postgres_schema_isolation.py: новый файл; перезапись не выполнялась.
+При несоответствии записи предусмотрен rollback из непосредственно проверенной копии. Отдельные checkpoint и Git tag не создавались.
+
+7. ПУБЛИКАЦИЯ И ПРИЁМКА
+После успешного CI PR №5 объединяется в main. Для применения исправления пользователь выполняет «Обновить из Git» и полную пересборку BotHost из main с включённым Dockerfile. DATABASE_URL и MAX_BOT_TOKEN оставляются существующие.
+Ожидаемые признаки: контейнер running (без restarting), Uvicorn слушает 0.0.0.0:3000; GET https://vdktree.bothost.tech/api/health возвращает ok=true, version=1.0.1, database=postgresql; домен / отображает VdkTree.
+После первого входа через MAX администраторский запрос нужно выполнять к vdktree.users, не к public.users.
+Если после обновления появится иной traceback, требуется прислать только логи работы, без токенов, паролей или DATABASE_URL.
