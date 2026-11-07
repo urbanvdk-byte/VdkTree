@@ -12,16 +12,19 @@ v0.9.0 — профессиональная карточка. Редактиро
 v1.0.0 — импорт CSV/XLSX. Только администратор загружает файл и задаёт имя источника. Сначала создаётся предварительный отчёт с разбором ошибок и повторами, без добавления растений. Затем отдельным подтверждением подходящие строки атомарно записываются в PostgreSQL. Отчёт доступен для скачивания в CSV. Ошибочные и повторные строки не импортируются.
 
 ## Как получить роль администратора для проверки
+
+**Важно для BotHost v1.0.1:** таблицы VdkTree находятся в отдельной схеме `vdktree`, а не `public`. Используйте только `vdktree.users`. Таблицу `public.users` других приложений не изменяйте.
+
 Все новые MAX-пользователи по умолчанию получают роль user. Это намеренная защита: первый посетитель не становится администратором автоматически. После первого входа через MAX откройте pgAdmin базы PostgreSQL VdkTree в BotHost (ссылка «Открыть в Adminer» или pgAdmin в панели БД).
 
 Выполните запрос для просмотра только идентификаторов:
-SELECT id,max_id,display_name,role FROM users ORDER BY created_at DESC;
+SELECT id,max_id,display_name,role FROM vdktree.users ORDER BY created_at DESC;
 
 Сверьте свою запись по max_id. Затем назначьте роль, подставив собственный идентификатор вместо ВАШ_MAX_ID:
-UPDATE users SET role='admin' WHERE max_id='ВАШ_MAX_ID' RETURNING max_id,display_name,role;
+UPDATE vdktree.users SET role='admin' WHERE max_id='ВАШ_MAX_ID' RETURNING max_id,display_name,role;
 
 Для назначения модератора другому зарегистрированному участнику используйте:
-UPDATE users SET role='moderator' WHERE max_id='MAX_ID_УЧАСТНИКА' RETURNING max_id,display_name,role;
+UPDATE vdktree.users SET role='moderator' WHERE max_id='MAX_ID_УЧАСТНИКА' RETURNING max_id,display_name,role;
 
 Обновите страницу карты — появятся кнопки «🛡️ Модерация» и (только для admin) «📥 Импорт Excel/CSV». Никогда не публикуйте реальные DATABASE_URL, MAX_BOT_TOKEN или пароль базы.
 
