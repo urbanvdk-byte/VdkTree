@@ -142,7 +142,7 @@ def _conditions(request: Request, skip=None):
                         values.append(raw)
                 where.append("("+ " OR ".join(choices)+")")
                 args+=values
-        elif kind=="text":
+        if kind=="text":
             value=params.get("contains_"+key,"").strip()
             if value:
                 if len(value)>150:
