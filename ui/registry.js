@@ -143,7 +143,7 @@
  }
  function sorts(){
   const select=$("registrySort");select.replaceChildren();
-  for(const key of ["created_at","species_common","botanical_species","inventory_number","object_type","confirmation_status","height_m","trunk_diameter_130_cm","approx_age_years","sanitary_condition_score","observed_on","plot_number","quantity","photo_count","trunk_lean_degrees"]){
+  for(const key of meta.map(f=>f.key)){
    if(!byKey[key]?.sortable)continue;
    const option=document.createElement("option");option.value=key;option.textContent=byKey[key].label;select.append(option);
   }
