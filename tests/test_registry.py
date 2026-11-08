@@ -188,10 +188,20 @@ class RegistryTests(unittest.TestCase):
         r=self.client.get("/registry")
         self.assertEqual(r.status_code,200,r.text)
         self.assertIn("Реестр зелёных насаждений",r.text)
-        self.assertIn("v1.1.0",r.text)
+        self.assertIn("v1.1.1",r.text)
         self.assertEqual(self.client.get("/registry.html").status_code,200)
+        home=self.client.get("/")
+        self.assertEqual(home.status_code,200)
+        self.assertIn("v1.1.1",home.text)
+        self.assertEqual(home.headers["cache-control"],"no-store, must-revalidate")
+        alias=self.client.get("/index.html")
+        self.assertEqual(alias.status_code,200)
+        self.assertIn("v1.1.1",alias.text)
+        self.assertEqual(alias.headers["cache-control"],"no-store, must-revalidate")
+        self.assertIn('href="./?v=1.1.1"',r.text)
+        self.assertEqual(r.headers["cache-control"],"no-store, must-revalidate")
         health=self.client.get("/api/health")
-        self.assertEqual(health.json()["version"],"1.1.0")
+        self.assertEqual(health.json()["version"],"1.1.1")
 
 
 if __name__=="__main__":

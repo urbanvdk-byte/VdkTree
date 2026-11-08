@@ -1,4 +1,4 @@
-"""VdkTree v1.0.3 — FastAPI/MAX/shared inventory on BotHost PostgreSQL."""
+"""VdkTree v1.1.1 — FastAPI/MAX/shared inventory on BotHost PostgreSQL."""
 import os
 import re
 from pathlib import Path
@@ -19,7 +19,7 @@ from registry_api import router as registry_router
 from pgdb import connect
 
 BASE = Path(__file__).resolve().parent
-app = FastAPI(title="VdkTree", version="1.1.0")
+app = FastAPI(title="VdkTree", version="1.1.1")
 allowed_origins = [
     "https://urbanvdk-byte.github.io",
     "https://vdktree.bothost.tech",
@@ -48,14 +48,15 @@ app.mount("/ui", StaticFiles(directory=BASE / "ui"), name="ui")
 
 
 @app.get("/")
+@app.get("/index.html")
 def home():
-    return FileResponse(BASE / "index.html")
+    return FileResponse(BASE / "index.html", headers={"Cache-Control": "no-store, must-revalidate"})
 
 
 @app.get("/registry")
 @app.get("/registry.html")
 def registry_home():
-    return FileResponse(BASE / "registry.html")
+    return FileResponse(BASE / "registry.html", headers={"Cache-Control": "no-store, must-revalidate"})
 
 
 @app.get("/api/health")
@@ -63,7 +64,7 @@ def health():
     # A healthy HTTP process is not enough: verify PostgreSQL connectivity too.
     with connect() as con:
         con.execute("SELECT 1")
-    return {"ok": True, "version": "1.1.0", "database": "postgresql"}
+    return {"ok": True, "version": "1.1.1", "database": "postgresql"}
 
 
 @app.get("/photos/{filename}")

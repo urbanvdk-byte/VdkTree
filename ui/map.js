@@ -1,9 +1,21 @@
-/* VdkTree v1.0.0: public map, mobile forms, shared BotHost inventory and notes. */
+/* VdkTree v1.1.1: public map, fresh versioned assets, legacy demo quarantine and visible zoom. */
 (() => {
   "use strict";
+  // Preserve any old local-only MVP data in an archive, then retire the old
+  // key: no legacy markers are rendered and all live points remain in PostgreSQL.
+  try {
+    const legacyKey = "vdktree-demo-v020";
+    const archiveKey = "vdktree-local-demo-archive-v111";
+    const saved = localStorage.getItem(legacyKey);
+    if (saved !== null) {
+      if (localStorage.getItem(archiveKey) === null) localStorage.setItem(archiveKey, saved);
+      if (localStorage.getItem(archiveKey) === saved) localStorage.removeItem(legacyKey);
+    }
+  } catch (_) { /* Storage may be unavailable. Normal map loading continues. */ }
   const api = String(window.VDK_AUTH_API || "").replace(/\/$/, "");
   const el = id => document.getElementById(id);
-  const map = L.map("map", {preferCanvas:true}).setView([43.1155,131.8855],13);
+  const map = L.map("map", {preferCanvas:true, zoomControl:false}).setView([43.1155,131.8855],13);
+  L.control.zoom({position:"bottomleft"}).addTo(map);
   map.attributionControl.setPrefix(false);
   L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
     maxZoom:19,attribution:"© OpenStreetMap contributors"
