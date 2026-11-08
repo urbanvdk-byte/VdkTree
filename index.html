@@ -8,11 +8,17 @@
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <link rel="stylesheet" href="./ui/style.css">
 <link rel="stylesheet" href="./auth/auth.css">
+<style>
+header .registry-nav{background:#e8f4eb;color:#17683a;text-decoration:none;font-weight:750;white-space:nowrap;border-radius:12px;padding:9px 11px;font-size:12px;order:1}
+header .registry-nav:hover{background:#d6ebda}
+@media(max-width:530px){header .registry-nav{font-size:11px;padding:7px 8px}header h1{font-size:14px}}
+</style>
 </head>
 <body>
 <header>
   <h1>🌳 Деревья Владивостока</h1>
-  <span class="version">v1.0.3</span>
+  <a href="./registry.html" class="registry-nav">📋 Реестр деревьев</a>
+  <span class="version">v1.1.0</span>
 </header>
 <div id="map" aria-label="Карта зелёных насаждений Владивостока"></div>
 <div id="controls">
