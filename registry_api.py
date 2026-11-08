@@ -75,13 +75,8 @@ FACETS = [
     "plot_number","planting_type","life_form","source_type","dieback_category",
     "slope_protection","endemic_or_relict","needs_clarification",
 ]
-SORTS = {
-    "created_at","updated_at","observed_on","inventory_number","species_common",
-    "botanical_species","object_type","confirmation_status","height_m",
-    "trunk_diameter_130_cm","approx_age_years","sanitary_condition_score",
-    "plot_number","biogroup_number","plant_number","quantity","lat","lon",
-    "source_type","trunk_lean_degrees","photo_count","needs_clarification",
-}
+# Every registered field can be used as the primary sorting key.
+SORTS = frozenset(FIELDS)
 DATE_FIELDS={"created_at","updated_at","confirmed_at"}
 GLOBAL_QUERY=("o.id","o.inventory_number","b.species_common","e.botanical_species",
               "e.plot_number","e.biogroup_number","e.plant_number","b.comment")
