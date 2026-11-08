@@ -109,7 +109,7 @@ def _conditions(request: Request, skip=None):
         prefix,sep,field=key.partition("_")
         if not sep or prefix not in {"f","min","max","contains"} or field not in FIELDS:
             raise HTTPException(422,"Неизвестный фильтр: "+key[:100])
-        if prefix=="f" and FIELDS[field][2]!="choice":
+        if prefix=="f" and field not in FACETS:
             raise HTTPException(422,"Неизвестный категориальный фильтр")
         if prefix in {"min","max"} and FIELDS[field][2] not in {"number","date"}:
             raise HTTPException(422,"Диапазон для этого поля не поддерживается")
@@ -125,7 +125,7 @@ def _conditions(request: Request, skip=None):
         args.extend([_like(search)]*len(GLOBAL_QUERY))
     for key,(expr,_,kind,_) in FIELDS.items():
         if key==skip: continue
-        if kind=="choice":
+        if key in FACETS:
             selected=params.getlist("f_"+key)
             if len(selected)>30:
                 raise HTTPException(422,"Слишком много значений фильтра")
