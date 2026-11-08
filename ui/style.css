@@ -1,4 +1,4 @@
-/* VdkTree v0.6.0 — mobile-first citizen map. */
+/* VdkTree v1.1.1 — mobile-first map and accessible zoom controls. */
 :root{--green:#18753e;--ink:#183a2a;--edge:#d1e3d6;--muted:#64766a}
 *{box-sizing:border-box}
 html,body{margin:0;height:100%;font:15px system-ui,-apple-system,"Segoe UI",Arial,sans-serif;color:var(--ink);background:#eff6f0}
@@ -25,7 +25,10 @@ header .version{border-radius:12px;background:#e5f3e8;color:#17653a;font-size:11
 .vdk-marker.shrub.proposed{border:2px dashed #526875}
 .vdk-marker.shrub.confirmed{border:2px solid #fff}
 .vdk-alert{position:absolute;right:-5px;top:-7px;width:11px;height:11px;border:2px solid white;border-radius:50%;background:#e43d36;box-shadow:0 1px 3px #0005}
-.vdk-marker.local{background:#e8b44d;border:2px dashed #6e592c}
+/* Zoom is anchored at the lower-left, away from the top search/filter bar. */
+.leaflet-bottom.leaflet-left .leaflet-control-zoom{margin-left:12px;margin-bottom:22px}
+.leaflet-control-zoom{border-radius:9px!important;overflow:hidden;box-shadow:0 3px 13px #0003}
+.leaflet-control-zoom a{width:35px!important;height:35px!important;line-height:35px!important;font-size:22px!important}
 .leaflet-container{font:inherit}
 .leaflet-control-attribution{font-size:10px!important;background:#ffffffd5!important}
 dialog{border:0;border-radius:17px;box-shadow:0 16px 55px #0005;padding:20px;width:min(94vw,460px);max-height:90dvh;overflow:auto}
