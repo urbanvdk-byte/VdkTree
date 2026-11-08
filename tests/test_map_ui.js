@@ -1,22 +1,24 @@
-/* v1.0.3 — frontend structure and security contract. */
+/* v1.1.0 — frontend structure and security contract. */
 "use strict";
 const assert=require("node:assert/strict");
 const fs=require("node:fs");
 const html=fs.readFileSync("index.html","utf8");
 const js=fs.readFileSync("ui/map.js","utf8");
 const css=fs.readFileSync("ui/style.css","utf8");
-for(const token of ["v1.0.3", "ui/map.js", "ui/style.css","auth/client.js","id=\"objectForm\"","id=\"details\"","id=\"addAreaButton\"","id=\"filter\""])
+for(const token of ["v1.1.0", "ui/map.js", "ui/style.css","auth/client.js","id=\"objectForm\"","id=\"details\"","id=\"addAreaButton\"","id=\"filter\""])
   assert.ok(html.includes(token), "Missing HTML component: "+token);
 assert.ok(html.includes("ui/management.js"),"Management screens must be included");
+assert.ok(html.includes("href=\"./registry.html\""),"Registry navigation missing");
+assert.ok(!js.includes("vdktree-demo-v020"),"Legacy local demo overlay must be removed");
 const adminJs=fs.readFileSync("ui/management.js","utf8");
 for(const token of ["openUsers","usersDialog","/api/v2/admin/users","revoke-sessions","reset-credentials","isAdmin()"]) assert.ok(adminJs.includes(token),"Users admin UI missing: "+token);
 assert.ok(js.includes("map.attributionControl.setPrefix(false)"),"Leaflet logo prefix must stay hidden");
 assert.ok(js.includes("© OpenStreetMap contributors"),"OpenStreetMap credit must remain");
 for(const token of ["vdk-marker","vdk-alert","shrub","confirmed","proposed","needs_clarification","vdk-auth-btn",
-   "/api/v2/objects","/notes","/confirm","editable(","604800","localStorage.getItem"])
+   "/api/v2/objects","/notes","/confirm","editable(","604800"])
   assert.ok(js.includes(token), "Expected map behavior missing: "+token);
 assert.ok(css.includes(".vdk-marker.shrub"),"Missing blue shrub marker styles");
 assert.ok(css.includes(".vdk-marker.tree.confirmed"),"Missing confirmed green tree styles");
 assert.ok(css.includes(".vdk-marker.tree.proposed"),"Missing proposed grey tree styles");
 assert.ok(!/innerHTML\s*=\s*.*\bo\.comment\b/.test(js),"Never insert raw user comments");
-console.log("Frontend v1.0.3 static contract checks passed");
+console.log("Frontend v1.1.0 static contract checks passed");
