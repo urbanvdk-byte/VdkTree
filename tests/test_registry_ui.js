@@ -1,4 +1,4 @@
-/* VdkTree v1.1.0 — registry page and public spreadsheet export contract. */
+/* VdkTree v1.1.1 — registry page and public spreadsheet export contract. */
 "use strict";
 const assert=require("node:assert/strict");
 const fs=require("node:fs");
@@ -7,7 +7,7 @@ const js=fs.readFileSync("ui/registry.js","utf8");
 const css=fs.readFileSync("ui/registry.css","utf8");
 const map=fs.readFileSync("ui/map.js","utf8");
 const homepage=fs.readFileSync("index.html","utf8");
-for(const token of ["v1.1.0","registrySearch","filterGroups","registrySort",
+for(const token of ["v1.1.1","registrySearch","filterGroups","registrySort",
   "columnControls","registryTable","registryRows","treeDetail","detailBody",
   "prevPage","nextPage","activeFilters","closeFilters","auth/client.js"]) {
  assert.ok(html.includes(token),"Registry HTML missing: "+token);
@@ -22,7 +22,11 @@ assert.ok(js.includes("td.textContent"),"User-supplied data must be HTML-escaped
 assert.ok(!js.includes("innerHTML="),"No raw user values in innerHTML in registry");
 assert.ok(css.includes(".registry-filters")&&css.includes(".registry-table"));
 assert.ok(css.includes("@media(max-width:830px)"),"Mobile filters missing");
-assert.ok(!map.includes("vdktree-demo-v020"),"Local fake markers must be removed");
-assert.ok(homepage.includes('href="./registry.html"'),"Map must link registry");
-assert.ok(homepage.includes('v1.1.0'),"Version in top right missing");
-console.log("v1.1.0 registry UI and old-demo removal contract passed");
+assert.ok(!map.includes("Локальная демозапись"),"Old local demo markers must not be rendered");
+assert.ok(map.includes("vdktree-local-demo-archive-v111"),"Old local records must be archived first");
+assert.ok(homepage.includes('href="./registry.html?v=1.1.1"'),"Map must link fresh registry HTML");
+assert.ok(html.includes('href="./?v=1.1.1"'),"Back to map must work on BotHost and GitHub Pages");
+assert.ok(!html.includes('href="./index.html"'),"Old BotHost 404 navigation must not return");
+assert.ok(html.includes('src="./ui/registry.js?v=1.1.1"'),"Registry JavaScript must bust browser cache");
+assert.ok(homepage.includes('v1.1.1'),"Version in top right missing");
+console.log("v1.1.1 registry UI and old-demo removal contract passed");
