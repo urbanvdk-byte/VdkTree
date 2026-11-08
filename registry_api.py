@@ -1,0 +1,442 @@
+"""VdkTree v1.1.0 — public tree/shrub registry, faceted server filters and regulation 2.4 XLSX."""
+from datetime import date
+from io import BytesIO
+import math
+import re
+import secrets
+import time
+
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi.responses import Response
+from openpyxl import Workbook
+from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+from openpyxl.utils import get_column_letter
+from pydantic import BaseModel, ConfigDict, Field
+
+from auth_backend import current_session
+from expert_api import EXPERT_FIELDS
+from pgdb import connect
+
+router = APIRouter(prefix="/api/v2/registry", tags=["registry"])
+TABLES = """ FROM inventory_objects o
+  LEFT JOIN inventory_basic b ON b.object_id=o.id
+  LEFT JOIN inventory_expert e ON e.object_id=o.id
+"""
+BASE_WHERE = "o.object_type IN ('tree','shrub')"
+NOTES = """EXISTS(SELECT 1 FROM inventory_clarifications n
+             WHERE n.object_id=o.id AND n.status='open')"""
+PHOTO = "(SELECT COUNT(*) FROM inventory_photos p WHERE p.object_id=o.id)"
+FIELDS = {
+    "id": ("o.id","ID","text","Учет"),
+    "inventory_number": ("o.inventory_number","Инвентарный номер","text","Учет"),
+    "object_type": ("o.object_type","Тип: дерево / кустарник","choice","Учет"),
+    "confirmation_status": ("o.confirmation_status","Статус проверки","choice","Учет"),
+    "created_at": ("o.created_at","Добавлено","date","Учет"),
+    "updated_at": ("o.updated_at","Обновлено","date","Учет"),
+    "observed_on": ("o.observed_on","Дата наблюдения","date","Учет"),
+    "source_type": ("o.source_type","Источник данных","choice","Учет"),
+    "import_source": ("o.import_source","Источник импорта","text","Учет"),
+    "external_id": ("o.external_id","Внешний ID","text","Учет"),
+    "created_by": ("o.created_by","ID автора","text","Учет"),
+    "confirmed_at": ("o.confirmed_at","Дата подтверждения","date","Учет"),
+    "confirmed_by": ("o.confirmed_by","ID проверившего","text","Учет"),
+    "lat": ("o.lat","Широта","number","Местоположение"),
+    "lon": ("o.lon","Долгота","number","Местоположение"),
+    "species_common": ("b.species_common","Название породы","text","Вид и посадка"),
+    "botanical_species": ("e.botanical_species","Ботанический вид","text","Вид и посадка"),
+    "planting_type": ("e.planting_type","Тип насаждения","text","Вид и посадка"),
+    "life_form": ("e.life_form","Жизненная форма","text","Вид и посадка"),
+    "plot_number": ("e.plot_number","№ участка","text","Вид и посадка"),
+    "biogroup_number": ("e.biogroup_number","№ биогруппы","text","Вид и посадка"),
+    "plant_number": ("e.plant_number","№ растения","text","Вид и посадка"),
+    "quantity": ("e.quantity","Количество, шт.","number","Размеры и возраст"),
+    "trunk_diameter_130_cm": ("e.trunk_diameter_130_cm","Диаметр на 1,3 м, см","number","Размеры и возраст"),
+    "height_m": ("e.height_m","Высота, м","number","Размеры и возраст"),
+    "approx_age_years": ("e.approx_age_years","Возраст, лет","number","Размеры и возраст"),
+    "approx_diameter_cm": ("b.approx_diameter_cm","Примерный диаметр, см","number","Размеры и возраст"),
+    "approx_height_band": ("b.approx_height_band","Примерная высота","choice","Размеры и возраст"),
+    "sanitary_condition_score": ("e.sanitary_condition_score","Санитарный балл (1–6)","choice","Состояние"),
+    "visible_condition": ("b.visible_condition","Внешнее состояние","choice","Состояние"),
+    "dieback_category": ("e.dieback_category","Категория усыхания","text","Состояние"),
+    "defects": ("e.defects","Дефекты","text","Состояние"),
+    "care_recommendations": ("e.care_recommendations","Рекомендации по уходу","text","Состояние"),
+    "comment": ("b.comment","Комментарий","text","Состояние"),
+    "visible_damage_json": ("b.visible_damage_json","Видимые повреждения","text","Состояние"),
+    "slope_protection": ("e.slope_protection","Противоэрозионная функция","choice","Специфика Владивостока"),
+    "trunk_lean_degrees": ("e.trunk_lean_degrees","Наклон ствола, °","number","Специфика Владивостока"),
+    "crown_asymmetry": ("e.crown_asymmetry","Асимметрия кроны","text","Специфика Владивостока"),
+    "endemic_or_relict": ("e.endemic_or_relict","Эндемик или реликт","choice","Специфика Владивостока"),
+    "needs_clarification": (NOTES,"Есть открытые замечания","choice","Состояние"),
+    "photo_count": (PHOTO,"Количество фотографий","number","Учет"),
+}
+FACETS = [
+    "object_type","confirmation_status","species_common","botanical_species",
+    "visible_condition","approx_height_band","sanitary_condition_score",
+    "plot_number","planting_type","life_form","source_type","dieback_category",
+    "slope_protection","endemic_or_relict","needs_clarification",
+]
+SORTS = {
+    "created_at","updated_at","observed_on","inventory_number","species_common",
+    "botanical_species","object_type","confirmation_status","height_m",
+    "trunk_diameter_130_cm","approx_age_years","sanitary_condition_score",
+    "plot_number","biogroup_number","plant_number","quantity","lat","lon",
+    "source_type","trunk_lean_degrees","photo_count","needs_clarification",
+}
+DATE_FIELDS={"created_at","updated_at","confirmed_at"}
+GLOBAL_QUERY=("o.id","o.inventory_number","b.species_common","e.botanical_species",
+              "e.plot_number","e.biogroup_number","e.plant_number","b.comment")
+
+
+def _like(value):
+    return "%"+value.replace("\\","\\\\").replace("%","\\%").replace("_","\\_")+"%"
+
+
+def _date(value):
+    try:
+        return date.fromisoformat(value).isoformat()
+    except (ValueError,TypeError):
+        raise HTTPException(422,"Дата должна быть в формате YYYY-MM-DD")
+
+
+def _conditions(request: Request, skip=None):
+    """SQL identifiers come ONLY from FIELDS, never directly from user input."""
+    args=[]
+    where=[BASE_WHERE]
+    params=request.query_params
+    for key in params:
+        if key in {"limit","offset","sort","direction","q"}:
+            continue
+        prefix,sep,field=key.partition("_")
+        if not sep or prefix not in {"f","min","max","contains"} or field not in FIELDS:
+            raise HTTPException(422,"Неизвестный фильтр: "+key[:100])
+        if prefix=="f" and FIELDS[field][2]!="choice":
+            raise HTTPException(422,"Неизвестный категориальный фильтр")
+        if prefix in {"min","max"} and FIELDS[field][2] not in {"number","date"}:
+            raise HTTPException(422,"Диапазон для этого поля не поддерживается")
+        if prefix=="contains" and FIELDS[field][2]!="text":
+            raise HTTPException(422,"Текстовый поиск для этого поля не поддерживается")
+    search=params.get("q","").strip()
+    if len(search)>150:
+        raise HTTPException(422,"Поисковая строка слишком длинная")
+    if search:
+        where.append("("+ " OR ".join(
+            "COALESCE("+expr+"::text,'') ILIKE ? ESCAPE '\\'" for expr in GLOBAL_QUERY
+        )+")")
+        args.extend([_like(search)]*len(GLOBAL_QUERY))
+    for key,(expr,_,kind,_) in FIELDS.items():
+        if key==skip: continue
+        if kind=="choice":
+            selected=params.getlist("f_"+key)
+            if len(selected)>30:
+                raise HTTPException(422,"Слишком много значений фильтра")
+            if selected:
+                choices=[]
+                values=[]
+                for raw in selected:
+                    if not raw or len(raw)>160:
+                        raise HTTPException(422,"Неправильное значение фильтра")
+                    if raw=="__empty__":
+                        choices.append("("+expr+" IS NULL OR "+expr+"::text='')")
+                    else:
+                        choices.append(expr+"::text=?")
+                        values.append(raw)
+                where.append("("+ " OR ".join(choices)+")")
+                args+=values
+        elif kind=="text":
+            value=params.get("contains_"+key,"").strip()
+            if value:
+                if len(value)>150:
+                    raise HTTPException(422,"Слишком длинное значение фильтра")
+                where.append("COALESCE("+expr+"::text,'') ILIKE ? ESCAPE '\\'")
+                args.append(_like(value))
+        elif kind in {"number","date"}:
+            for p,op in (("min_",">="),("max_","<=")):
+                raw=params.get(p+key)
+                if raw is None or raw=="":
+                    continue
+                if kind=="number":
+                    try:
+                        val=float(raw)
+                        if not math.isfinite(val) or abs(val)>1000000000000:
+                            raise ValueError()
+                    except ValueError:
+                        raise HTTPException(422,"Неверное число для "+key)
+                else:
+                    val=_date(raw)
+                    if key in DATE_FIELDS:
+                        where.append("to_timestamp("+expr+")::date "+op+" ?::date")
+                    else:
+                        where.append(expr+" "+op+" ?")
+                    args.append(val)
+                    continue
+                where.append(expr+" "+op+" ?")
+                args.append(val)
+    return " WHERE "+" AND ".join(where),tuple(args)
+
+
+def _rows_sql():
+    names=("id","inventory_number","object_type","confirmation_status",
+           "species_common","botanical_species","plot_number","biogroup_number",
+           "plant_number","planting_type","life_form","quantity",
+           "trunk_diameter_130_cm","height_m","approx_age_years",
+           "sanitary_condition_score","dieback_category","defects",
+           "care_recommendations","slope_protection","trunk_lean_degrees",
+           "crown_asymmetry","endemic_or_relict","approx_height_band",
+           "approx_diameter_cm","visible_condition","visible_damage_json",
+           "comment","observed_on","created_at","updated_at",
+           "confirmed_at","source_type","import_source","external_id",
+           "created_by","confirmed_by","lat","lon","needs_clarification","photo_count")
+    return "SELECT "+",".join(FIELDS[name][0]+" AS "+name for name in names)+TABLES
+
+
+def _record(row):
+    d=dict(row)
+    d["needs_clarification"]=bool(d["needs_clarification"])
+    d["slope_protection"]=None if d["slope_protection"] is None else bool(d["slope_protection"])
+    d["endemic_or_relict"]=None if d["endemic_or_relict"] is None else bool(d["endemic_or_relict"])
+    return d
+
+
+@router.get("/meta")
+def meta():
+    """Description of EVERY supported filter, available to any visitor."""
+    return {
+        "fields":[{"key":key,"label":title,"kind":kind,"group":group,
+                   "facet":key in FACETS,"sortable":key in SORTS}
+                  for key,(_,title,kind,group) in FIELDS.items()],
+        "sorts":sorted(SORTS),"page_size":50,
+        "regulation":"Приложение № 2, таблица 2.4; пункт 5.4",
+    }
+
+
+@router.get("/facets")
+def facets(request:Request):
+    """DNS-like counts which update when other filters change."""
+    with connect() as db:
+        out={}
+        for key in FACETS:
+            where,args=_conditions(request,skip=key)
+            expr=FIELDS[key][0]
+            alias="COALESCE(NULLIF("+expr+"::text,''),'__empty__')"
+            rows=db.execute(
+                "SELECT "+alias+" AS value,COUNT(*) AS count"+TABLES+
+                where+" GROUP BY 1 ORDER BY count DESC,value ASC LIMIT 40",args
+            ).fetchall()
+            out[key]=[dict(v) for v in rows]
+    return {"facets":out}
+
+
+@router.get("")
+def listing(request:Request,
+            limit:int=Query(default=50,ge=1,le=100),
+            offset:int=Query(default=0,ge=0,le=10000000),
+            sort:str="created_at",direction:str="desc"):
+    if sort not in SORTS or direction not in {"asc","desc"}:
+        raise HTTPException(422,"Недопустимое поле сортировки или направление")
+    where,args=_conditions(request)
+    expr=FIELDS[sort][0]
+    with connect() as db:
+        count=db.execute("SELECT COUNT(*) AS total"+TABLES+where,args).fetchone()[0]
+        rows=db.execute(
+            _rows_sql()+where+" ORDER BY "+expr+" "+direction.upper()+
+            " NULLS LAST, o.id ASC LIMIT ? OFFSET ?",
+            (*args,limit,offset)
+        ).fetchall()
+    return {"total":count,"limit":limit,"offset":offset,
+            "items":[_record(r) for r in rows]}
+
+
+def _read_point(db,object_id):
+    row=db.execute(_rows_sql()+" WHERE "+BASE_WHERE+" AND o.id=?",
+                   (object_id,)).fetchone()
+    if not row:
+        raise HTTPException(404,"Дерево или кустарник не найден")
+    return _record(row)
+
+
+@router.get("/{object_id}")
+def detail(object_id:str):
+    with connect() as db:
+        obj=_read_point(db,object_id)
+        photos=db.execute(
+            "SELECT storage_key FROM inventory_photos WHERE object_id=? ORDER BY created_at DESC LIMIT 20",
+            (object_id,)
+        ).fetchall()
+        notes=db.execute("""
+            SELECT id,message,status,created_at,resolution FROM inventory_clarifications
+            WHERE object_id=? ORDER BY created_at DESC LIMIT 100
+        """,(object_id,)).fetchall()
+    return {"object":obj,"photos":["/photos/"+p["storage_key"] for p in photos],
+            "notes":[dict(n) for n in notes]}
+
+
+class RegisterPatch(BaseModel):
+    model_config=ConfigDict(extra="forbid")
+    inventory_number:str|None=Field(max_length=100)
+
+
+@router.patch("/{object_id}/inventory-number")
+def set_inventory_number(object_id:str,body:RegisterPatch,user=Depends(current_session)):
+    if user["role"]!="admin":
+        raise HTTPException(403,"Инвентарный номер изменяет только администратор")
+    number=body.inventory_number.strip() if body.inventory_number else None
+    if number and not re.fullmatch(r"[\w.:-]{1,100}",number,re.UNICODE):
+        raise HTTPException(422,"Недопустимый формат инвентарного номера")
+    with connect() as db:
+        old=db.execute(
+            "SELECT inventory_number FROM inventory_objects WHERE id=? AND object_type IN ('tree','shrub') FOR UPDATE",
+            (object_id,)
+        ).fetchone()
+        if not old:
+            raise HTTPException(404,"Дерево или кустарник не найден")
+        if old["inventory_number"]==number:
+            raise HTTPException(409,"Номер не изменился")
+        try:
+            db.execute("UPDATE inventory_objects SET inventory_number=?,updated_at=? WHERE id=?",
+                       (number,int(time.time()),object_id))
+            db.execute("""
+                INSERT INTO inventory_audit(id,object_id,actor_id,action,before_json,after_json,created_at)
+                VALUES(?,?,?,'inventory_number_edit',json_build_object('inventory_number',?::text)::text,
+                       json_build_object('inventory_number',?::text)::text,?)
+            """,(secrets.token_hex(16),object_id,user["id"],old["inventory_number"],
+                 number,int(time.time())))
+        except Exception as exc:
+            if getattr(exc,"sqlstate",None)=="23505":
+                raise HTTPException(409,"Этот инвентарный номер уже используется")
+            raise
+    return {"ok":True,"inventory_number":number}
+
+
+SCALE={1:"Без признаков ослабления",2:"Ослабленное",3:"Сильно ослабленное",
+       4:"Усыхающее",5:"Сухостой текущего года",6:"Сухостой прошлых лет"}
+HEADINGS=[
+    "№ уч.","№ био.","№ раст.","Тип нас.","Жизн. форма","Вид растения",
+    "Кол. (шт)","Диам. 1,3 м (см)","Выс. (м)","Возраст (лет)",
+    "Сост. Х/У/Н","Категория усыхания / дефекты","Рекомендации",
+]
+
+
+def _cell(value):
+    if value is None or value=="":
+        return None
+    if isinstance(value,(int,float,bool)):
+        return value
+    t=str(value)
+    # Excel treats leading characters as formulas; untrusted field values are text.
+    if t.startswith(("=","+","-","@","\t","\r")):
+        return "'"+t
+    return t[:32000]
+
+
+@router.get("/{object_id}/sheet.xlsx")
+def sheet(object_id:str):
+    """Editable individual extract of regulation Appendix 2, Table 2.4.
+
+    Empty values stay empty. Reg 2.4's Х/У/Н classification is not inferred
+    from a six-point score; score is included in the supplementary worksheet.
+    """
+    with connect() as db:
+        d=_read_point(db,object_id)
+    wb=Workbook()
+    ws=wb.active
+    ws.title="Ведомость 2.4"
+    ws.merge_cells("A1:M1")
+    ws["A1"]="ВЕДОМОСТЬ ПОДЕРЕВНОГО УЧЕТА ЗЕЛЕНЫХ НАСАЖДЕНИЙ"
+    ws["A1"].font=Font(name="Calibri",size=15,bold=True,color="FFFFFF")
+    ws["A1"].fill=PatternFill("solid",fgColor="1E613E")
+    ws["A1"].alignment=Alignment(vertical="center",horizontal="center")
+    ws.row_dimensions[1].height=40
+    ws.merge_cells("A2:M2")
+    ws["A2"]="ДЕРЕВЬЯ И КУСТАРНИКИ · Приложение № 2 · Таблица 2.4"
+    ws["A2"].font=Font(name="Calibri",size=12,bold=True,color="24543A")
+    ws.row_dimensions[2].height=28
+    ws.merge_cells("A3:M3")
+    ws["A3"]="Индивидуальная выписка VdkTree · ID "+d["id"]+" · "+("Дерево" if d["object_type"]=="tree" else "Кустарник")
+    ws.merge_cells("A4:M4")
+    ws["A4"]="Пустые графы означают, что сведения не внесены. Это не заверенный муниципальный паспорт."
+    ws["A4"].font=Font(italic=True,color="8B5E1C")
+    ws.row_dimensions[4].height=25
+    values=[
+        d["plot_number"],d["biogroup_number"],d["plant_number"],
+        d["planting_type"],d["life_form"],
+        d["botanical_species"] or d["species_common"],
+        d["quantity"],d["trunk_diameter_130_cm"],
+        d["height_m"],d["approx_age_years"],
+        None,  # Х/У/Н is NOT automatically equivalent to six-grade score.
+        " / ".join(x for x in [d["dieback_category"],d["defects"]] if x),
+        d["care_recommendations"],
+    ]
+    border=Border(bottom=Side(style="hair",color="BBD3C3"))
+    for idx,(h,v) in enumerate(zip(HEADINGS,values),1):
+        col=get_column_letter(idx)
+        ws.cell(6,idx,_cell(h))
+        header=ws.cell(6,idx)
+        header.font=Font(color="FFFFFF",bold=True,name="Calibri",size=10)
+        header.fill=PatternFill("solid",fgColor="347C50")
+        header.alignment=Alignment(vertical="center",horizontal="center",wrap_text=True)
+        ws.cell(7,idx,idx)
+        ws.cell(7,idx).font=Font(color="637A69",size=9,bold=True)
+        vcell=ws.cell(8,idx,_cell(v))
+        vcell.border=border
+        vcell.alignment=Alignment(vertical="center",wrap_text=True)
+        ws.column_dimensions[col].width=20 if idx not in (12,13) else 32
+    ws.row_dimensions[6].height=44
+    ws.row_dimensions[8].height=70
+    ws.freeze_panes="A8"
+    ws.sheet_view.showGridLines=False
+    ws.print_options.horizontalCentered=True
+    ws.page_setup.orientation="landscape"
+    ws.page_setup.paperSize=ws.PAPERSIZE_A3
+    ws.print_title_rows="1:7"
+    ws.print_area="A1:M10"
+    ws.merge_cells("A10:M10")
+    ws["A10"]="Графа «Сост. Х/У/Н» не заполняется автоматически из шестибалльного санитарного балла (п. 5.5)."
+    ws["A10"].font=Font(color="7C5021",italic=True,size=10)
+
+    extra=wb.create_sheet("Доп. сведения")
+    extra.sheet_view.showGridLines=False
+    extra.append(["ДОПОЛНИТЕЛЬНЫЕ СВЕДЕНИЯ · ПУНКТ 5.4 РЕГЛАМЕНТА","Значение"])
+    details=[
+        ("Тип объекта","Дерево" if d["object_type"]=="tree" else "Кустарник"),
+        ("ID VdkTree",d["id"]),("Инвентарный номер",d["inventory_number"]),
+        ("Название породы",d["species_common"]),
+        ("Ботанический вид",d["botanical_species"]),
+        ("Санитарный балл (1–6)",d["sanitary_condition_score"]),
+        ("Пояснение санитарного балла",SCALE.get(d["sanitary_condition_score"])),
+        ("Противоэрозионная/берегозащитная функция",
+         "Да" if d["slope_protection"] else "Нет" if d["slope_protection"] is False else None),
+        ("Наклон ствола, град.",d["trunk_lean_degrees"]),
+        ("Асимметрия кроны",d["crown_asymmetry"]),
+        ("Эндемик/реликт",
+         "Да" if d["endemic_or_relict"] else "Нет" if d["endemic_or_relict"] is False else None),
+        ("Широта WGS84",d["lat"]),("Долгота WGS84",d["lon"]),
+        ("Дата наблюдения",d["observed_on"]),
+        ("Статус VdkTree",d["confirmation_status"]),
+        ("Дата добавления",date.fromtimestamp(d["created_at"]).isoformat()),
+        ("Источник",d["source_type"]),
+        ("Примечание","Сведения экспортированы из пользовательского VdkTree; не являются официальной заверенной ведомостью"),
+    ]
+    for k,v in details:
+        extra.append([_cell(k),_cell(v)])
+    extra.column_dimensions["A"].width=58
+    extra.column_dimensions["B"].width=90
+    extra.row_dimensions[1].height=34
+    for cell in extra[1]:
+        cell.fill=PatternFill("solid",fgColor="1E613E")
+        cell.font=Font(name="Calibri",bold=True,color="FFFFFF",size=11)
+        cell.alignment=Alignment(wrap_text=True,vertical="center")
+    for row in extra.iter_rows(min_row=2):
+        row[0].font=Font(bold=True,color="24543A")
+        for cell in row:
+            cell.alignment=Alignment(vertical="top",wrap_text=True)
+            cell.border=border
+    extra.freeze_panes="B2"
+    buffer=BytesIO()
+    wb.save(buffer)
+    filename="VdkTree-vedomost-2-4-"+re.sub(r"[^a-zA-Z0-9_-]","",object_id)[:48]+".xlsx"
+    return Response(
+        content=buffer.getvalue(),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition":'attachment; filename="'+filename+'"',
+                 "Cache-Control":"no-store","X-Content-Type-Options":"nosniff"},
+    )
