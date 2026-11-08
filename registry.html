@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#17683a">
+<title>Реестр деревьев и кустарников — VdkTree</title>
+<link rel="stylesheet" href="./ui/registry.css">
+<link rel="stylesheet" href="./auth/auth.css">
+</head>
+<body class="registry-page">
+<header class="registry-header">
+ <div class="brand">
+  <a class="back-map" href="./index.html" title="Вернуться к карте">← Карта</a>
+  <h1>🌳 Реестр зелёных насаждений</h1>
+ </div>
+ <span class="version">v1.1.0</span>
+</header>
+<section class="registry-intro">
+ <div>
+  <div class="eyebrow">ЕДИНАЯ БАЗА VDKTREE</div>
+  <h2>Деревья и кустарники Владивостока</h2>
+  <p>Профессиональный реестр с поиском, фильтрами по характеристикам и индивидуальными ведомостями. Данные загружаются напрямую из PostgreSQL.</p>
+ </div>
+ <div class="registry-metrics">
+  <div><strong id="totalResults">—</strong><span>Подходящих объектов</span></div>
+  <div><strong id="visibleResults">—</strong><span>На этой странице</span></div>
+ </div>
+</section>
+
+<div class="registry-shell">
+ <aside class="registry-filters" id="filterPanel" aria-label="Фильтры реестра">
+  <div class="filter-head"><h2>Фильтры</h2><button id="closeFilters" class="mobile-only secondary" type="button">Закрыть</button></div>
+  <label class="main-search">Поиск по породе, № участка, ID
+    <input type="search" id="registrySearch" placeholder="Например, дуб или VL-..." autocomplete="off">
+  </label>
+  <div id="filterGroups" class="filter-groups"></div>
+  <div class="filter-footer">
+    <button type="button" id="resetFilters" class="secondary">Сбросить все фильтры</button>
+    <button type="button" id="applyFilters" class="primary">Показать результаты</button>
+  </div>
+ </aside>
+ <main class="registry-results">
+   <div class="results-toolbar">
+     <button id="mobileFilters" class="secondary mobile-only" type="button">☷ Фильтры</button>
+     <div id="resultsSummary" role="status" aria-live="polite">Загружаем реестр…</div>
+     <div class="toolbar-right">
+       <label>Сортировка
+         <select id="registrySort"></select>
+       </label>
+       <button id="sortDirection" class="secondary" type="button" title="Изменить направление сортировки">↓</button>
+       <details class="column-picker" id="columnsPicker">
+         <summary>Столбцы</summary>
+         <div id="columnControls" class="column-controls"></div>
+       </details>
+     </div>
+   </div>
+   <div id="activeFilters" class="active-filters" aria-label="Применённые фильтры"></div>
+   <div class="registry-table-wrap">
+    <table class="registry-table" id="registryTable">
+      <thead><tr id="tableHead"></tr></thead>
+      <tbody id="registryRows"><tr><td>Загружаем данные…</td></tr></tbody>
+    </table>
+   </div>
+   <div class="pager">
+     <button id="prevPage" class="secondary" type="button">← Назад</button>
+     <span id="pageStatus" role="status"></span>
+     <button id="nextPage" class="secondary" type="button">Вперёд →</button>
+   </div>
+   <p class="registry-note">Показаны зарегистрированные в VdkTree деревья и кустарники, включая неподтверждённые. Пустые значения означают отсутствие сведений, а не нулевые измерения.</p>
+ </main>
+</div>
+
+<dialog id="treeDetail" class="registry-detail" aria-label="Профессиональная карточка растения">
+ <div class="detail-header">
+   <div><div class="eyebrow">ПРОФЕССИОНАЛЬНАЯ КАРТОЧКА</div><h2 id="detailHeading">Дерево</h2></div>
+   <button id="closeDetail" type="button" class="secondary" aria-label="Закрыть карточку">✕</button>
+ </div>
+ <p id="detailMessage" role="status"></p>
+ <div id="detailBody"></div>
+ <div class="detail-actions" id="detailActions"></div>
+</dialog>
+<div class="mobile-scrim" id="filterScrim" hidden></div>
+<script src="https://st.max.ru/js/max-web-app.js"></script>
+<script src="./auth/config.js"></script>
+<script src="./auth/client.js"></script>
+<script src="./ui/registry.js"></script>
+</body>
+</html>
