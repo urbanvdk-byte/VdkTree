@@ -1,0 +1,30 @@
+Original path: tests/test_map_ui.js
+Date: 2026-11-08
+Git blob: d566d719058312530fbbc62619db350eacf5954c
+SHA-256 UTF-8: b5f89503d86087444d63f2b1beb99e09daf1d1a91e009630eb41efec3203729a
+
+===== ORIGINAL UTF-8 FILE =====
+/* v1.1.0 — frontend structure and security contract. */
+"use strict";
+const assert=require("node:assert/strict");
+const fs=require("node:fs");
+const html=fs.readFileSync("index.html","utf8");
+const js=fs.readFileSync("ui/map.js","utf8");
+const css=fs.readFileSync("ui/style.css","utf8");
+for(const token of ["v1.1.0", "ui/map.js", "ui/style.css","auth/client.js","id=\"objectForm\"","id=\"details\"","id=\"addAreaButton\"","id=\"filter\""])
+  assert.ok(html.includes(token), "Missing HTML component: "+token);
+assert.ok(html.includes("ui/management.js"),"Management screens must be included");
+assert.ok(html.includes("href=\"./registry.html\""),"Registry navigation missing");
+assert.ok(!js.includes("vdktree-demo-v020"),"Legacy local demo overlay must be removed");
+const adminJs=fs.readFileSync("ui/management.js","utf8");
+for(const token of ["openUsers","usersDialog","/api/v2/admin/users","revoke-sessions","reset-credentials","isAdmin()"]) assert.ok(adminJs.includes(token),"Users admin UI missing: "+token);
+assert.ok(js.includes("map.attributionControl.setPrefix(false)"),"Leaflet logo prefix must stay hidden");
+assert.ok(js.includes("© OpenStreetMap contributors"),"OpenStreetMap credit must remain");
+for(const token of ["vdk-marker","vdk-alert","shrub","confirmed","proposed","needs_clarification","vdk-auth-btn",
+   "/api/v2/objects","/notes","/confirm","editable(","604800"])
+  assert.ok(js.includes(token), "Expected map behavior missing: "+token);
+assert.ok(css.includes(".vdk-marker.shrub"),"Missing blue shrub marker styles");
+assert.ok(css.includes(".vdk-marker.tree.confirmed"),"Missing confirmed green tree styles");
+assert.ok(css.includes(".vdk-marker.tree.proposed"),"Missing proposed grey tree styles");
+assert.ok(!/innerHTML\s*=\s*.*\bo\.comment\b/.test(js),"Never insert raw user comments");
+console.log("Frontend v1.1.0 static contract checks passed");
