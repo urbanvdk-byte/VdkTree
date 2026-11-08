@@ -82,7 +82,9 @@ jobs:
       - name: Verify health and public map API
         run: |
           for i in $(seq 1 30); do
-            if curl -fsS http://127.0.0.1:3000/api/health | python3 -c 'import json,sys; x=json.load(sys.stdin); assert x["ok"] and x["database"] == "postgresql" and x["version"] == "1.1.0"'; then
+            if curl -fsS http://127.0.0.1:3000/api/health | python3 -c 'import json,sys; x=json.load(sys.stdin); assert x["ok"] and x["database"] == "postgresql" and x["version"] == "1.1.1"'; then
+              curl -fsS http://127.0.0.1:3000/index.html | grep -q 'v1.1.1'
+              curl -fsS 'http://127.0.0.1:3000/registry.html' | grep -q 'href="./?v=1.1.1"'
               curl -fsS http://127.0.0.1:3000/api/v2/registry | python3 -c 'import json,sys; assert isinstance(json.load(sys.stdin)["items"], list)'
               curl -fsS http://127.0.0.1:3000/api/v2/objects | python3 -c 'import json,sys; assert isinstance(json.load(sys.stdin)["objects"], list)'
               exit 0
