@@ -1,0 +1,34 @@
+Original path: tests/test_users_ui.js
+Date: 2026-11-08
+Git blob: ab7489ee6086822b1b4aa53c60af0b0d62bcfbc4
+
+===== ORIGINAL FILE =====
+/* v1.0.3 — users admin frontend contract, no untrusted raw HTML for user fields. */
+"use strict";
+const assert=require("node:assert/strict");
+const fs=require("node:fs");
+const script=fs.readFileSync("ui/management.js","utf8");
+const css=fs.readFileSync("ui/style.css","utf8");
+const html=fs.readFileSync("index.html","utf8");
+for(const name of ["openUsers","usersDialog","usersFilters","usersRows","usersSummary",
+                   "usersMore","usersClose","roleText","user-role-form"]) {
+  assert.ok(script.includes(name), "Admin screen is missing: "+name);
+}
+for(const endpoint of ["/api/v2/admin/users","/history","/revoke-sessions",
+                        "/reset-credentials"]) {
+  assert.ok(script.includes(endpoint), "Account management endpoint missing: "+endpoint);
+}
+for(const text of ["Пользователи","Заблокировать","Разблокировать","Сохранить роль",
+                   "История изменений","Последний вход","Сбросить логин/пароль",
+                   "Завершить все сеансы"]) {
+  assert.ok(script.includes(text), "User control missing: "+text);
+}
+assert.ok(script.includes('$("openUsers").hidden=!isAdmin()'));
+assert.ok(script.includes("if(!isAdmin())return;"));
+assert.ok(script.includes("if(!isOwn)"));
+assert.ok(script.includes("item.textContent") || script.includes("title.textContent"));
+assert.ok(!/innerHTML\s*=\s*.*u\.display_name/.test(script),"Never insert unsanitized display names");
+assert.ok(css.includes(".users-filters"));
+assert.ok(css.includes(".user-role-form"));
+assert.ok(html.includes('class="version">v1.0.3'));
+console.log("Admin Users UI contract passed");

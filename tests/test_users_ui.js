@@ -1,4 +1,4 @@
-/* v1.0.3 — users admin frontend contract, no untrusted raw HTML for user fields. */
+/* v1.1.0 — users admin frontend contract, no untrusted raw HTML for user fields. */
 "use strict";
 const assert=require("node:assert/strict");
 const fs=require("node:fs");
@@ -25,5 +25,5 @@ assert.ok(script.includes("item.textContent") || script.includes("title.textCont
 assert.ok(!/innerHTML\s*=\s*.*u\.display_name/.test(script),"Never insert unsanitized display names");
 assert.ok(css.includes(".users-filters"));
 assert.ok(css.includes(".user-role-form"));
-assert.ok(html.includes('class="version">v1.0.3'));
+assert.ok(html.includes('class="version">v1.1.0'));
 console.log("Admin Users UI contract passed");

@@ -15,10 +15,11 @@ from moderation_api import router as moderation_router
 from expert_api import router as expert_router
 from import_api import router as import_router
 from users_admin_api import router as users_admin_router
+from registry_api import router as registry_router
 from pgdb import connect
 
 BASE = Path(__file__).resolve().parent
-app = FastAPI(title="VdkTree", version="1.0.3")
+app = FastAPI(title="VdkTree", version="1.1.0")
 allowed_origins = [
     "https://urbanvdk-byte.github.io",
     "https://vdktree.bothost.tech",
@@ -40,6 +41,7 @@ app.include_router(moderation_router)
 app.include_router(expert_router)
 app.include_router(import_router)
 app.include_router(users_admin_router)
+app.include_router(registry_router)
 
 app.mount("/auth", StaticFiles(directory=BASE / "auth"), name="auth")
 app.mount("/ui", StaticFiles(directory=BASE / "ui"), name="ui")
@@ -50,12 +52,18 @@ def home():
     return FileResponse(BASE / "index.html")
 
 
+@app.get("/registry")
+@app.get("/registry.html")
+def registry_home():
+    return FileResponse(BASE / "registry.html")
+
+
 @app.get("/api/health")
 def health():
     # A healthy HTTP process is not enough: verify PostgreSQL connectivity too.
     with connect() as con:
         con.execute("SELECT 1")
-    return {"ok": True, "version": "1.0.3", "database": "postgresql"}
+    return {"ok": True, "version": "1.1.0", "database": "postgresql"}
 
 
 @app.get("/photos/{filename}")

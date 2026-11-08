@@ -12,6 +12,10 @@ on:
       - expert_api.py
       - import_api.py
       - users_admin_api.py
+      - registry_api.py
+      - registry.html
+      - ui/registry.js
+      - ui/registry.css
       - inventory/schema_import_v100.sql
       - pgdb.py
       - inventory/schema_postgres.sql
@@ -28,6 +32,10 @@ on:
       - expert_api.py
       - import_api.py
       - users_admin_api.py
+      - registry_api.py
+      - registry.html
+      - ui/registry.js
+      - ui/registry.css
       - inventory/schema_import_v100.sql
       - pgdb.py
       - inventory/schema_postgres.sql
@@ -74,7 +82,8 @@ jobs:
       - name: Verify health and public map API
         run: |
           for i in $(seq 1 30); do
-            if curl -fsS http://127.0.0.1:3000/api/health | python3 -c 'import json,sys; x=json.load(sys.stdin); assert x["ok"] and x["database"] == "postgresql" and x["version"] == "1.0.3"'; then
+            if curl -fsS http://127.0.0.1:3000/api/health | python3 -c 'import json,sys; x=json.load(sys.stdin); assert x["ok"] and x["database"] == "postgresql" and x["version"] == "1.1.0"'; then
+              curl -fsS http://127.0.0.1:3000/api/v2/registry | python3 -c 'import json,sys; assert isinstance(json.load(sys.stdin)["items"], list)'
               curl -fsS http://127.0.0.1:3000/api/v2/objects | python3 -c 'import json,sys; assert isinstance(json.load(sys.stdin)["objects"], list)'
               exit 0
             fi

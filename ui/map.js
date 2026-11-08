@@ -79,20 +79,6 @@
           .on("click",()=>showCard(o.id)).addTo(layers);
       }
     }
-    // Preserve pre-BotHost local demos visually, clearly distinguish from shared records.
-    try {
-      const old=JSON.parse(localStorage.getItem("vdktree-demo-v020")||"[]");
-      if(Array.isArray(old)&&(filter==="all"||filter==="tree"))
-        for(const t of old.slice(0,300)){
-          if(!Number.isFinite(Number(t.lat))||!Number.isFinite(Number(t.lon)))continue;
-          L.marker([Number(t.lat),Number(t.lon)],{
-            icon:L.divIcon({className:"vdk-marker-shell",
-              html:'<span class="vdk-marker local"></span>',iconSize:[30,30],iconAnchor:[15,15]}),
-            title:"Локальная демозапись"
-          }).bindPopup("Локальная запись из старой версии. Другие жители её не видят. Добавьте заново для публикации.")
-            .addTo(layers);
-        }
-    }catch(_){}
   }
   async function reload(){
     try{

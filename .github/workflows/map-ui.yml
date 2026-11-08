@@ -4,6 +4,7 @@ on:
     branches: [main]
     paths:
       - index.html
+      - registry.html
       - ui/**
       - .github/workflows/map-ui.yml
       - tests/test_map_ui.js
@@ -23,6 +24,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Verify map and admin JavaScript
-        run: node --check ui/map.js && node --check ui/management.js
+        run: node --check ui/map.js && node --check ui/management.js && node --check ui/registry.js
       - name: Verify UI contract
-        run: node tests/test_map_ui.js && node tests/test_users_ui.js
+        run: node tests/test_map_ui.js && node tests/test_users_ui.js && node tests/test_registry_ui.js
