@@ -188,7 +188,7 @@ class RegistryTests(unittest.TestCase):
         r=self.client.get("/registry")
         self.assertEqual(r.status_code,200,r.text)
         self.assertIn("Реестр зелёных насаждений",r.text)
-        self.assertIn("v1.1.0",r.text)
+        self.assertIn("v1.1.1",r.text)
         self.assertEqual(self.client.get("/registry.html").status_code,200)
         home=self.client.get("/")
         self.assertEqual(home.status_code,200)
